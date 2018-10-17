@@ -99,7 +99,7 @@ def test_pair_scores(make_dense=False):
                                                                pi_vector=pi_vector_preproc, back_compat=True,
                                                                num_docs=adj_mat_preproc.shape[0],
                                                                mixed_pairs_sims=mixed_pairs_sims,
-                                                               print_timing=True, test_all_versions=True)
+                                                               print_timing=True, run_all_implementations=True)
     scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat), num_true_pairs=5)
     end = timer()
     print "ran " \
@@ -185,8 +185,8 @@ def test_eval_aucs():
 if __name__ == "__main__":
     ok = test_adj_and_phi()
     test_adj_and_phi2()
-    test_simple_jaccard()
-    test_pair_scores()  # note: test_all_versions flag means "run and time all versions",
+    #test_simple_jaccard()
+    test_pair_scores()  # note: run_all_implementations flag means "run and time all versions",
                         # but we only look at the output of the last
     test_pair_scores(make_dense=True)  # much faster. But won't scale to large matrices.
     test_only_wc()

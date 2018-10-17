@@ -3,57 +3,15 @@ import numpy as np
 import pandas
 from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import scale
+import scoring_methods
 
-# Turns out the scoring functions can be ~10x faster when the function is written as: transform the adjacency matrix, then
-# take dot products of the row pairs.
-def compute_scores_fast(pairs_generator, adj_matrix, transf_func, print_timing=False, **named_args_to_func):
-    start = timer()
-    transformed_mat = transf_func(adj_matrix, **named_args_to_func)
-    scores = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
-        scores.append(pair_x.dot(pair_y))
-    end = timer()
-    print transf_func.__name__ + ": " + str(end - start) + " secs" if print_timing else ''
-    return scores
 
-# Standardize adj_matrix column-wise: for each coln, x --> (x - p_i) / sqrt(p_i(1-p_i))
-# Also multiply denominator by sqrt(num_cols), so that the final dot product returns the mean, not just a sum.
-# Necessarily makes a dense matrix.
-def wc_transform(adj_matrix, pi_vector):
-    return (adj_matrix - pi_vector) / np.sqrt(pi_vector * (1 - pi_vector) * adj_matrix.shape[1])
-
-# Leaves matrix sparse if it starts sparse
-def adamic_adar_transform(adj_matrix, pi_vector, num_docs):
-    affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix):
-        return adj_matrix.multiply(1/np.sqrt(np.log(affil_counts))).tocsr()
-    else:
-        return adj_matrix / np.sqrt(np.log(affil_counts))
-
-# Leaves matrix sparse if it starts sparse
-def newman_transform(adj_matrix, pi_vector, num_docs):
-    affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix):
-        return adj_matrix.multiply(1/np.sqrt(affil_counts.astype(float) - 1)).tocsr()
-    else:
-        return adj_matrix / np.sqrt(affil_counts.astype(float) - 1)
-
-# Leaves matrix sparse if it starts sparse
-def shared_size_transform(adj_matrix):
-    return adj_matrix
-
-# Leaves matrix sparse if it starts sparse
-def shared_weight11_transform(adj_matrix, pi_vector):
-    if sparse.isspmatrix(adj_matrix):
-        # Keep the matrix sparse if it was before. (By default changes to coo() if I don't cast it tocsr().)
-        return adj_matrix.multiply(np.sqrt(np.log(1 / pi_vector))).tocsr()  # .multiply() doesn't exist if adj_matrix is dense
-    else:
-        return adj_matrix * np.sqrt(np.log(1 / pi_vector))  # gives incorrect behavior if adj_matrix is sparse
 
 # Necessarily makes a dense matrix.
 def simple_only_weighted_corr(pairs_generator, adj_matrix, pi_vector, print_timing=False):
     start = timer()
-    transformed_mat = wc_transform(adj_matrix, pi_vector)
+    transformed_mat = scoring_methods.wc_transform(adj_matrix, pi_vector)
 
     item1, item2, wc = [], [], []
     for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
@@ -116,6 +74,52 @@ def simple_only_cosine(pairs_generator, adj_matrix, weights=None, print_timing=F
     end = timer()
     print 'simple_only_cosine: ' + str(end - start) + " secs" if print_timing else ''
     return cos
+
+
+
+# Leaves sparse matrix sparse
+def simple_only_pearson(pairs_generator, adj_matrix, print_timing=False):
+    start = timer()
+
+    # scale rows to have std 1.
+    # sklearn.preprocessing.scale will only take CSC sparse matrices and axis 0, so need to transpose back and
+    # forth (cheap operation) to get my CSR with axis 1
+    transformed_matrix = scale(adj_matrix.transpose().astype(float, copy=False),  # cast to float to avoid warning msg
+                               axis=0, with_mean=False, with_std=True).transpose()
+
+    row_means = transformed_matrix.mean(axis=1)
+    if type(row_means) == np.matrix:
+        row_means = row_means.A1
+
+    n = adj_matrix.shape[1]
+    scores = []
+    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_matrix):
+        scores.append((pair_x - row_means[row_idx1]).dot(pair_y - row_means[row_idx2]) / float(n))
+
+    end = timer()
+    print 'simple_only_pearson: ' + str(end - start) + " secs" if print_timing else ''
+    return scores
+
+
+def simple_weighted_corr_sparse(pairs_generator, adj_matrix, pi_vector, print_timing=False):
+    start = timer()
+
+    terms_for_11 = (1 - pi_vector) / pi_vector
+    #sqrt_terms_for_10 = np.full_like(pi_vector, fill_value=-1)
+    terms_for_00 = pi_vector / (1 - pi_vector)
+
+    wc = []
+    n = float(adj_matrix.shape[1])
+    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+        sum_11 = (pair_x * pair_y).dot(terms_for_11)
+        sum_00 = (np.logical_not(pair_x) * np.logical_not(pair_y)).dot(terms_for_00)
+        sum_10 = -np.logical_xor(pair_x, pair_y).sum()
+        wc.append((sum_11 + sum_10 + sum_00) / n)
+
+    end = timer()
+    print 'simple_weighted_corr_sparse: ' + str(end - start) + " secs" if print_timing else ''
+    return wc
+
 
 
 # Sparsity type rules (notes to self):
