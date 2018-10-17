@@ -14,21 +14,26 @@ import numpy as np
 # -decide how to specify param values for MixedPairs
 
 # Iterates through all pairs of matrix rows, in the form (i, j) where i < j
-# Rows are of type numpy.ndarray()
+# Rows output are always of type numpy.ndarray()
 def gen_all_pairs(my_adj_mat):
     num_rows = my_adj_mat.shape[0]
     is_sparse = sparse.isspmatrix(my_adj_mat)
+    is_numpy_matrix = (type(my_adj_mat) == np.matrix)
     for i in range(num_rows):
         if is_sparse:
             rowi = my_adj_mat.getrow(i).toarray()[0]  # toarray() gives 2-d matrix, [0] to flatten
-        else:   # already an ndarray()
+        else:   # already an ndarray(), possibly a matrix()
             rowi = my_adj_mat[i,]
+            if is_numpy_matrix:
+                rowi = rowi.A1
 
         for j in range(i + 1, num_rows):
             if is_sparse:
                 rowj = my_adj_mat.getrow(j).toarray()[0]
             else:
                 rowj = my_adj_mat[j,]
+                if is_numpy_matrix:
+                    rowj = rowj.A1
 
             yield (i, j, rowi, rowj)
 

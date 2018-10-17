@@ -76,7 +76,7 @@ def test_adj_and_phi2():
 
 
 # For now, just jaccard, but todo: others (all 12)
-def test_pair_scores():
+def test_pair_scores(make_dense=False):
     print "Testing scores computed for pairs"
     # Starting from adj matrix, get phi (tested in test_adj_and_phi2 above), score pairs, and compare scores
     # to R's
@@ -91,14 +91,15 @@ def test_pair_scores():
                       'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs']
     mixed_pairs_sims = [.01, .001]
     start = timer()
-    # a test: is my 10x speedup simply from using a dense matrix?
-    adj_mat_preproc = adj_mat_preproc.toarray()
+
+    if make_dense:
+        adj_mat_preproc = adj_mat_preproc.toarray()
     scores_data_frame = score_data.scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc,
                                                                which_methods=methods_to_run,
                                                                pi_vector=pi_vector_preproc, back_compat=True,
                                                                num_docs=adj_mat_preproc.shape[0],
                                                                mixed_pairs_sims=mixed_pairs_sims,
-                                                               print_timing=True)
+                                                               print_timing=True, test_all_versions=True)
     scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat), num_true_pairs=5)
     end = timer()
     print "ran " \
@@ -159,8 +160,20 @@ def test_only_wc():
     assert (max(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"])) < 1e-03)
     # Wow: it's 10 times faster than the usual method!
     # I tried implementing other methods the same way, and they were also faster
-    # But eventually I figured out the savings was mainly because the sparse adj_matrix gets converted to dense,
+    # Eventually I figured out a big part of the savings was from the sparse adj_matrix getting converted to dense,
     # which makes row access faster.
+
+    # But in fact, even after doing that, the initial-matrix-transformation way is still ~6x faster, wow.
+    # Example timings for test_pair_scores() using sparse input matrix:
+    # weighted_corr: 0.272197961807 secs
+    # simple_only_weighted_corr: 0.048122882843 secs
+    # wc_transform: 0.051922082901 secs
+    # ...and using dense input matrix:
+    # weighted_corr: 0.042044878006 secs
+    # simple_only_weighted_corr: 0.00608086585999 secs
+    # wc_transform: 0.00586104393005 secs
+    # One remaining uncertainty: is the difference still a fixed cost to convert to dense, or is it scaling differently?
+
 
 
 
@@ -173,5 +186,7 @@ if __name__ == "__main__":
     ok = test_adj_and_phi()
     test_adj_and_phi2()
     test_simple_jaccard()
-    test_pair_scores()
+    test_pair_scores()  # note: test_all_versions flag means "run and time all versions",
+                        # but we only look at the output of the last
+    test_pair_scores(make_dense=True)  # much faster. But won't scale to large matrices.
     test_only_wc()

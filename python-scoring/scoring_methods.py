@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.spatial.distance import cosine
+from scipy.stats import pearsonr
 import pandas
 from timeit import default_timer as timer
 import scoring_methods_fast
@@ -14,7 +15,8 @@ all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'sharedSize', 'hamming'
 
 # Returns a table of scores with one column per method
 # Direction of scores: higher for true pairs
-def score_pairs(pairs_generator, generator_arg, which_methods, print_timing=False, **all_named_args):
+def score_pairs(pairs_generator, generator_arg, which_methods, print_timing=False,
+                test_all_versions=False, **all_named_args):
     scores = {}
 
     # first pass through the generator to paste in row ids
@@ -24,36 +26,56 @@ def score_pairs(pairs_generator, generator_arg, which_methods, print_timing=Fals
     if 'jaccard' in which_methods:
         scores['jaccard'] = compute_scores(pairs_generator(generator_arg), jaccard, print_timing=print_timing)
     if 'cosine' in which_methods:
-        scores['cosine'] = compute_scores(pairs_generator(generator_arg), cosine_sim, print_timing=print_timing)
+        scores['cosine'] = scoring_methods_fast.simple_only_cosine(pairs_generator, generator_arg,
+                                                                   print_timing=print_timing, use_package=True)
+        if test_all_versions:
+            scores['cosine'] = compute_scores(pairs_generator(generator_arg), cosine_sim, print_timing=print_timing)
+
+            scores['cosine'] = scoring_methods_fast.simple_only_cosine(pairs_generator, generator_arg,
+                                                                       print_timing=print_timing, use_package=False)
+
     if 'cosineIDF' in which_methods:
         idf_weights = np.log(1/all_named_args['pi_vector'])
-        scores['cosineIDF'] = compute_scores(pairs_generator(generator_arg), cosine_sim, print_timing=print_timing,
-                                             weights=idf_weights)
+        scores['cosineIDF'] = scoring_methods_fast.simple_only_cosine(pairs_generator, generator_arg, weights=idf_weights,
+                                                                   print_timing=print_timing, use_package=True)
+        if test_all_versions:
+            scores['cosineIDF'] = compute_scores(pairs_generator(generator_arg), cosine_sim, print_timing=print_timing,
+                                                 weights=idf_weights)
+            scores['cosineIDF'] = scoring_methods_fast.simple_only_cosine(pairs_generator, generator_arg, weights=idf_weights,
+                                                                       print_timing=print_timing, use_package=False)
+
     if 'sharedSize' in which_methods:
-        scores['sharedSize'] = compute_scores(pairs_generator(generator_arg), shared_size, print_timing=print_timing,
+        scores['sharedSize'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
+                                                                           scoring_methods_fast.shared_size_transform,
+                                                                           print_timing=print_timing)
+        if test_all_versions:
+            scores['sharedSize'] = compute_scores(pairs_generator(generator_arg), shared_size, print_timing=print_timing,
                                               back_compat=all_named_args.get('back_compat', False))
+
     if 'hamming' in which_methods:
         scores['hamming'] = compute_scores(pairs_generator(generator_arg), hamming, print_timing=print_timing,
                                            back_compat=all_named_args.get('back_compat', False))
     if 'pearson' in which_methods:
         scores['pearson'] = compute_scores(pairs_generator(generator_arg), pearson_cor, print_timing=print_timing)
     if 'weighted_corr' in which_methods:
-        scores['weighted_corr'] = compute_scores(pairs_generator(generator_arg), weighted_corr, print_timing=print_timing,
-                                                 p_i=all_named_args['pi_vector'])
-        # scores['weighted_corr'] = scoring_methods_fast.simple_only_weighted_corr(pairs_generator, generator_arg,
-        #                                                     pi_vector=all_named_args['pi_vector'],
-        #                                                     print_timing=print_timing)['weighted_corr']
-        # scores['weighted_corr'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
-        #                                                                   scoring_methods_fast.wc_transform,
-        #                                                                   print_timing=print_timing, pi_vector=all_named_args['pi_vector'])
+        scores['weighted_corr'] = scoring_methods_fast.simple_only_weighted_corr(pairs_generator, generator_arg,
+                                                                             pi_vector=all_named_args['pi_vector'],
+                                                                             print_timing=print_timing)['weighted_corr']
+        if test_all_versions:
+            scores['weighted_corr'] = compute_scores(pairs_generator(generator_arg), weighted_corr, print_timing=print_timing,
+                                                     p_i=all_named_args['pi_vector'])
+            scores['weighted_corr'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
+                                                                          scoring_methods_fast.wc_transform,
+                                                                          print_timing=print_timing, pi_vector=all_named_args['pi_vector'])
 
     if 'shared_weight11' in which_methods:
-        scores['shared_weight11'] = compute_scores(pairs_generator(generator_arg), shared_weight11, print_timing=print_timing,
-                                                 p_i=all_named_args['pi_vector'])
-        # scores['shared_weight11'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
-        #                                                                   scoring_methods_fast.shared_weight11_transform,
-        #                                                                   print_timing=print_timing,
-        #                                                                   pi_vector=all_named_args['pi_vector'])
+        scores['shared_weight11'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
+                                                                             scoring_methods_fast.shared_weight11_transform,
+                                                                             print_timing=print_timing,
+                                                                             pi_vector=all_named_args['pi_vector'])
+        if test_all_versions:
+            scores['shared_weight11'] = compute_scores(pairs_generator(generator_arg), shared_weight11, print_timing=print_timing,
+                                                       p_i=all_named_args['pi_vector'])
     if 'shared_weight1100' in which_methods:
         scores['shared_weight1100'] = compute_scores(pairs_generator(generator_arg), shared_weight1100, print_timing=print_timing,
                                                  p_i=all_named_args['pi_vector'])
@@ -62,24 +84,26 @@ def score_pairs(pairs_generator, generator_arg, which_methods, print_timing=Fals
         # which are all they use). this happens automatically if p_i was learned empirically. this keeps the score per
         # term in [0, 1].
         num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
-        scores['adamic_adar'] = compute_scores(pairs_generator(generator_arg), adamic_adar, print_timing=print_timing,
-                                          affil_counts=num_docs_word_occurs_in)
-        # scores['adamic_adar'] = scoring_methods_fast.simple_only_adamic_adar_scores(pairs_generator, generator_arg,
-        #                                                                              num_docs_word_occurs_in, print_timing=True)
-
-        # slight syntax weirdness: 2nd arg must be adj_matrix, not just any old generator_arg
-        # scores['adamic_adar'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
-        #                                                                   scoring_methods_fast.adamic_adar_transform,
-        #                                                                   print_timing=print_timing, num_docs=all_named_args['num_docs'],
-        #                                                                   pi_vector=all_named_args['pi_vector'])
+        scores['adamic_adar'] = scoring_methods_fast.simple_only_adamic_adar_scores(pairs_generator, generator_arg,
+                                                                                     num_docs_word_occurs_in, print_timing=True)
+        if test_all_versions:
+            scores['adamic_adar'] = compute_scores(pairs_generator(generator_arg), adamic_adar,
+                                                   print_timing=print_timing,
+                                                   affil_counts=num_docs_word_occurs_in)
+            # slight syntax weirdness: 2nd arg must be adj_matrix, not just any old generator_arg
+            scores['adamic_adar'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
+                                                                              scoring_methods_fast.adamic_adar_transform,
+                                                                              print_timing=print_timing, num_docs=all_named_args['num_docs'],
+                                                                              pi_vector=all_named_args['pi_vector'])
     if 'newman' in which_methods:
         num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
-        scores['newman'] = compute_scores(pairs_generator(generator_arg), newman, print_timing=print_timing,
-                                          affil_counts=num_docs_word_occurs_in)
-        # scores['newman'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
-        #                                                                   scoring_methods_fast.newman_transform,
-        #                                                                   print_timing=print_timing, num_docs=all_named_args['num_docs'],
-        #                                                                   pi_vector=all_named_args['pi_vector'])
+        scores['newman'] = scoring_methods_fast.compute_scores_fast(pairs_generator, generator_arg,
+                                                                          scoring_methods_fast.newman_transform,
+                                                                          print_timing=print_timing, num_docs=all_named_args['num_docs'],
+                                                                          pi_vector=all_named_args['pi_vector'])
+        if test_all_versions:
+            scores['newman'] = compute_scores(pairs_generator(generator_arg), newman, print_timing=print_timing,
+                                              affil_counts=num_docs_word_occurs_in)
     if 'mixed_pairs' in which_methods:
         for mp_sim in all_named_args['mixed_pairs_sims']:
             method_name = 'mixed_pairs_' + str(mp_sim)
@@ -119,7 +143,7 @@ def jaccard(x, y):
     else:
         return 0
 
-
+# slow, but sklearn.metrics.pairwise.cosine_similarity was worse
 def cosine_sim(x, y, **named_args):
     if x.sum() == 0 or y.sum() == 0:
         return 0
@@ -136,7 +160,7 @@ def cosine_sim(x, y, **named_args):
 def pearson_cor(x, y):
     if x.sum() == 0 or y.sum() == 0:
         return 0
-    return np.corrcoef(x, y)[1, 0]  # np.corrcoef() gives a 2x2 matrix
+    return pearsonr(x, y)[0]        # slightly faster than np.corrcoef()
 
 
 # Normalized (going forward) to be in [0,1]
