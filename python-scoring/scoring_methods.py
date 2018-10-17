@@ -5,7 +5,6 @@ import pandas
 from timeit import default_timer as timer
 import scoring_methods_fast
 
-
 all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'sharedSize', 'hamming', 'pearson', 'weighted_corr',
                        'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs']
 # Required args for methods:
@@ -234,4 +233,14 @@ def mixed_pairs(x, y, p_i, sim):
 
     return (np.dot(positions_11, terms_for_11) + np.dot(positions_10, terms_for_10) +
             np.dot(positions_00, terms_for_00))
+
+
+# Current status on speed (notes to self):
+# -the remaining speed bottlenecks (not optimized yet), slowest first:
+#   **pearson, mixedPairs, shared_weight1100, jaccard, hamming
+# -when calling score_pairs with test_all_versions=True, it uses the one that's been fastest on the example data,
+#  but this may change on different sized data sets. In particular, if we don't want to instantiate a dense matrix.
+# -If we don't want any dense matrix, then can't call the scoring_methods_fast versions of: weighted_corr (only)
+#   -Though note: we could still improve on the orig version by computing the transformation vals in advance, and
+#    applying them to each row when it's generated.
 
