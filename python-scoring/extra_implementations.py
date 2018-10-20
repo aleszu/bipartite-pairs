@@ -5,7 +5,10 @@ import numpy as np
 from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr
 from timeit import default_timer as timer
-from scipy import sparse
+import pandas
+import scoring_methods
+
+#import scoring_methods
 
 ## Indiv pair computations that can be called from compute_scores_orig ##
 
@@ -108,24 +111,29 @@ def newman(x, y, affil_counts):
     return np.dot(np.logical_and(x, y), 1/(affil_counts.astype(float) - 1))
 
 
-## Helpers to be called with compute_scores_from_terms ##
 
-def wc_terms(pi_vector, num_affils):
-    terms_for_11 = (1 - pi_vector) / (num_affils * pi_vector)
-    value_10 = -1 / float(num_affils)
-    terms_for_00 = pi_vector / ((1 - pi_vector) * num_affils)
-    return terms_for_11, value_10, terms_for_00
+
+def compute_scores_from_terms0(pairs_generator, adj_matrix, scores_bi_func, print_timing=False, **named_args_to_func):
+    start = timer()
+    terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
+    scores = []
+    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+        sum_11 = terms_for_11.dot(pair_x * pair_y)
+        sum_00 = terms_for_00.dot(np.logical_not(pair_x) * np.logical_not(pair_y))
+        sum_10 = value_10 * np.logical_xor(pair_x, pair_y).sum()
+        scores.append(sum_11 + sum_10 + sum_00)
+
+    end = timer()
+    if print_timing:
+        print scores_bi_func.__name__ + ": " + str(end - start) + " secs"
+    return scores
+
+## Helpers to be called with compute_scores_from_terms or compute_scores_from_terms0  ##
+
 
 
 ## Helpers to be called with compute_scores_from_transform ##
 
-# Leaves matrix sparse if it starts sparse
-def adamic_adar_transform(adj_matrix, pi_vector, num_docs):
-    affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix):
-        return adj_matrix.multiply(1/np.sqrt(np.log(affil_counts))).tocsr()
-    else:
-        return adj_matrix / np.sqrt(np.log(affil_counts))
 
 
 
@@ -146,5 +154,46 @@ def simple_only_phi_coeff(pairs_generator, adj_matrix, print_timing=False):
                  np.sqrt(row_sums[row_idx1] * row_sums[row_idx2] * (n - row_sums[row_idx1]) * (n - row_sums[row_idx2])) )
 
     end = timer()
-    print 'simple_only_phi_coeff: ' + str(end - start) + " secs" if print_timing else ''
+    if print_timing:
+        print 'simple_only_phi_coeff: ' + str(end - start) + " secs"
     return scores
+
+
+
+# Necessarily makes a dense matrix.
+def simple_only_weighted_corr(pairs_generator, adj_matrix, pi_vector, print_timing=False):
+    start = timer()
+    transformed_mat = scoring_methods.wc_transform(adj_matrix, pi_vector)
+
+    item1, item2, wc = [], [], []
+    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
+        item1.append(row_idx1)
+        item2.append(row_idx2)
+        wc.append(pair_x.dot(pair_y))
+
+    end = timer()
+    if print_timing:
+        print 'simple_only_weighted_corr: ' + str(end - start) + " secs"
+    return pandas.DataFrame({'item1': item1, 'item2': item2, 'weighted_corr': wc})
+
+
+# Leaves matrix sparse if it starts sparse
+def simple_weighted_corr_sparse(pairs_generator, adj_matrix, pi_vector, print_timing=False):
+    start = timer()
+
+    terms_for_11 = (1 - pi_vector) / pi_vector
+    #sqrt_terms_for_10 = np.full_like(pi_vector, fill_value=-1)
+    terms_for_00 = pi_vector / (1 - pi_vector)
+
+    wc = []
+    n = float(adj_matrix.shape[1])
+    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+        sum_11 = (pair_x * pair_y).dot(terms_for_11)
+        sum_00 = (np.logical_not(pair_x) * np.logical_not(pair_y)).dot(terms_for_00)
+        sum_10 = -np.logical_xor(pair_x, pair_y).sum()
+        wc.append((sum_11 + sum_10 + sum_00) / n)
+
+    end = timer()
+    if print_timing:
+        print 'simple_weighted_corr_sparse: ' + str(end - start) + " secs"
+    return wc
