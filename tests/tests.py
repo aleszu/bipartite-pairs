@@ -2,10 +2,12 @@ import sys
 sys.path.append("../python-scoring")  # loads the path for now + later. But "import score_data" highlights as an error,
                                       # so pycharm-friendly substitute is below. (Need sys.path call to avoid errors
                                       # from imports within score_data.)
+sys.path.append("../expt-code")
+
 import imp
 score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
 scoring_methods = imp.load_source("score_data", "../python-scoring/scoring_methods.py")
-loc_data = imp.load_source("score_data", "../python-scoring/loc_data.py")
+loc_data = imp.load_source("score_data", "../expt-code/loc_data.py")
 import numpy as np
 import pandas as pd
 import gzip
@@ -240,13 +242,14 @@ def resources_test(run_all_implementations=True):
 
     num_nodes = (100, 1000, 10000, 100000)
     num_nodes = [10000] # this size: no run finished in the length of time I was willing to wait
+    num_nodes = [500]
     for num_to_try in num_nodes:
-        adj_mat = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
         pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
-        # start with fastest
+        # (order given here doesn't matter)
         methods_to_run = ['cosine', 'cosineIDF',
                           # use fast "transform"
                           'shared_size', 'adamic_adar', 'newman', 'shared_weight11',
@@ -365,12 +368,49 @@ scoring_methods.extra_implementations.simple_only_adamic_adar_scores(score_data.
     # simple_only_pearson was a bit faster
 
 
-if __name__ == "__main0__":
-    #resources_test()
-    #test_timings("ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
-    test_timings("reality_appweek_50/data50_adjMat.mtx.gz")
+
+# Just tests that it runs; outfiles can be manually compared with backed-up copies if desired
+def test_run_and_eval():
+    # infile --> adj matrix (now moved outside the function)
+    adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
+    adj_mat = score_data.load_adj_mat(adj_mat_infile)
+
+    score_data.run_and_eval(adj_mat,
+                            true_labels_func = score_data.true_labels_for_expts_with_5pairs,
+                            method_spec="all",
+                            evals_outfile = "reality_appweek_50/python-out/evals-basic.txt",
+                            pair_scores_outfile="reality_appweek_50/python-out/scoredPairs-basic.csv.gz")
+
+
+def test_loc_data():
+    # todo: set random seed so this is actually repeatable
+    adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt'
+    edges_infile = '/Users/lfriedl/Documents/dissertation/real-data/brightkite/loc-brightkite_edges.txt'
+    rows_outfile = 'brightkite/data-ex1.txt'
+    adj_mat, row_labels, label_generator = loc_data.read_sample_save(adj_mat_infile, edges_infile, num_nodes=300, rows_outfile=rows_outfile)
+    if label_generator is None:
+        print "Found no edges; stopping"
+
+    else:
+        score_data.run_and_eval(adj_mat, true_labels_func = label_generator, method_spec="all",
+                                evals_outfile = "brightkite/evals-ex1.txt",
+                                pair_scores_outfile="brightkite/scoredPairs-ex1.csv.gz", row_labels=row_labels,
+                                print_timing=True)
+
 
 if __name__ == "__main__":
+    #resources_test(run_all_implementations=False)
+    #test_timings("ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
+    #test_timings("reality_appweek_50/data50_adjMat.mtx.gz")
+    test_loc_data()
+
+    # the real thing!
+    #loc_data.run_expts_loc_data()
+    #loc_data.run_expts_loc_data(loc_data_name = 'gowalla')
+    #loc_data.run_expts_loc_data(existing_data=True, inference_subdir='inference_round3')
+
+
+if __name__ == "__main0__":
     ok = test_adj_and_phi()
     test_adj_and_phi2()
     #test_simple_jaccard()
@@ -404,3 +444,6 @@ if __name__ == "__main__":
 
     # Test AUCs for newsgroups ex
     test_eval_aucs(scores_frame, aucs_file_R = "ng_aa_data2/results2-flip_allto6.txt")
+
+    # The function that does it all, that we'll usually call
+    test_run_and_eval()

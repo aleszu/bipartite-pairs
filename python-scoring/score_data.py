@@ -15,7 +15,9 @@ import numpy as np
 
 # Iterates through all pairs of matrix rows, in the form (i, j) where i < j
 # Rows output are always of type numpy.ndarray()
-def gen_all_pairs(my_adj_mat):
+# Returns (row1_index, row2_index, row1_label (differs from row1_index if row_labels param sent), row2_label, row1, row2)
+# row "labels" are actually integers
+def gen_all_pairs(my_adj_mat, row_labels=None):
     num_rows = my_adj_mat.shape[0]
     is_sparse = sparse.isspmatrix(my_adj_mat)
     is_numpy_matrix = (type(my_adj_mat) == np.matrix)
@@ -34,8 +36,10 @@ def gen_all_pairs(my_adj_mat):
                 rowj = my_adj_mat[j,]
                 if is_numpy_matrix:
                     rowj = rowj.A1
-
-            yield (i, j, rowi, rowj)
+            if row_labels is None:
+                yield (i, j, i, j, rowi, rowj)
+            else:
+                yield (i, j, row_labels[i], row_labels[j], rowi, rowj)
 
 
 # Infile must be in "matrix market" format and gzipped
@@ -90,17 +94,19 @@ def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False):
 # Convention for all my expt data: the true pairs are items (1,2), (3,4), etc.
 def get_true_labels_expt_data(pairs_generator, num_true_pairs):
     labels = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator:
+    for (row_idx1, row_idx2, _, _, pair_x, pair_y) in pairs_generator:
         label = True if (row_idx2 < 2 * num_true_pairs and row_idx1 == row_idx2 - 1 and row_idx2 % 2) else False
         labels.append(label)
     return labels
 
+def true_labels_for_expts_with_5pairs(pairs_generator):
+    return get_true_labels_expt_data(pairs_generator, 5)
+
 
 # method_spec: list of method names
-def run_and_eval(adj_mat_infile, num_true_pairs, method_spec, evals_outfile,
-                 pair_scores_outfile=None, pi_vector_infile=None, flip_high_ps=False):
-    # infile --> adj matrix
-    adj_mat = load_adj_mat(adj_mat_infile)
+def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
+                 pair_scores_outfile=None, pi_vector_infile=None, flip_high_ps=False,
+                 make_dense=True, row_labels=None, print_timing=False):
     # note on sparse matrices: adj_mat is initially read in as "coo" format (coordinates of entries). Next few operations
     # will be by column, so it's returned from load_adj_mat as "csc" (compressed sparse column). Then, converted to
     # "csr" in adjust_pi_vector to make pair generation (row slicing) fast.
@@ -112,27 +118,43 @@ def run_and_eval(adj_mat_infile, num_true_pairs, method_spec, evals_outfile,
         pi_vector = learn_pi_vector(adj_mat)
 
     pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)
+    if make_dense:
+        adj_mat = adj_mat.toarray()
 
     # score pairs
-    scores_data_frame = scoring_methods.score_pairs(gen_all_pairs, adj_mat, method_spec, pi_vector=pi_vector)
-    scores_data_frame['label'] = get_true_labels_expt_data(gen_all_pairs(adj_mat), num_true_pairs)
+    # (sending in all special args any methods might need)
+    if row_labels is None:
+        pairs_generator = gen_all_pairs
+    else:
+        def my_pairs_gen(adj_mat):
+            return gen_all_pairs(adj_mat, row_labels)
+        pairs_generator = my_pairs_gen
+    scores_data_frame = scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
+                                                    pi_vector=pi_vector, num_docs=adj_mat.shape[0],
+                                                    mixed_pairs_sims = 'standard',
+                                                    print_timing=print_timing)
+    method_names = set(scores_data_frame.columns.tolist()) - set(['item1', 'item2'])
+    scores_data_frame['label'] = map(int, true_labels_func(pairs_generator(adj_mat)))
 
     # save pair scores if desired
     if pair_scores_outfile is not None:
-        scores_data_frame.to_csv(pair_scores_outfile)   # to change column order, see .reindex()
+        scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2', 'label'] +
+                                                              sorted(list(method_names - set(['label']))), copy=False)
+        scores_data_frame.to_csv(pair_scores_outfile, index=False, compression="gzip")
 
     # compute evals and save
     evals = {}
-    for method in method_spec:
-        evals[method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
+    for method in method_names:
+        evals["auc_" + method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
 
-    evals['constructAllPairsFromMDocs'] = adj_mat.shape[0]
-    evals['numPositives'] = num_true_pairs
+    evals['constructAllPairsFromMDocs'] = adj_mat.shape[0]      # only correct when we're using all pairs
+    evals['numPositives'] = scores_data_frame['label'].sum()
     evals['numAffils'] = adj_mat.shape[1]
 
     with open(evals_outfile, 'w') as fpout:
-        for measure, val in evals:
-            fpout.write(measure + '\t' + str(val))
+        print "Saving results to " + evals_outfile
+        for (measure, val) in sorted(evals.iteritems()):
+            fpout.write(measure + '\t' + str(val) + '\n')
 
 
 # __main__ function should take: infile (adj_matrix.mm.gz), outfile (edge scores), methods (space-separated list of
@@ -145,8 +167,8 @@ if __name__ == "__main__":
     datafile_mmgz = sys.argv[1]
     edge_scores_outfile = sys.argv[2]
     methods = [x for x in sys.argv[2:]]
-    if 'all' in methods:
-        methods = scoring_methods.all_defined_methods
+    # if 'all' in methods:   # moved into score_pairs
+    #     methods = scoring_methods.all_defined_methods
 
     # infile --> adj matrix
     adj_mat = load_adj_mat(datafile_mmgz)

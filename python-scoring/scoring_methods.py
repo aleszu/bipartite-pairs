@@ -19,12 +19,21 @@ all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming
 def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
                 run_all_implementations=False, **all_named_args):
     scores = {}
+    if which_methods == 'all':
+        which_methods = all_defined_methods
+    if all_named_args.get('mixed_pairs_sims', None) == 'standard':
+        all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
 
     # first pass through the generator to paste in row ids
     scores['item1'], scores['item2'] = item_ids(pairs_generator(adj_matrix))
 
-    if 'jaccard' in which_methods:
-        scores['jaccard'] = compute_scores_orig(pairs_generator(adj_matrix), jaccard, print_timing=print_timing)
+    # Run them with fastest first:
+    # 'cosine', 'cosineIDF'
+    #'shared_size', 'adamic_adar', 'newman', 'shared_weight11'   -- use fast "transform"
+    #'hamming', 'pearson', 'jaccard',   -- medium
+    #'weighted_corr' uses "transform" when dense, "terms" when sparse -- speed varies accordingly
+    #'shared_weight1100', 'mixed_pairs' -- only have slow "terms" method
+
     if 'cosine' in which_methods:
         scores['cosine'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix,
                                                                    print_timing=print_timing, use_package=True)
@@ -54,6 +63,43 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
             scores['shared_size'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.shared_size,
                                                        print_timing=print_timing,
                                                        back_compat=all_named_args.get('back_compat', False))
+    if 'adamic_adar' in which_methods:
+        # for adamic_adar and newman, need to ensure every affil is seen at least twice (for the 1/1 terms,
+        # which are all they use). this happens automatically if p_i was learned empirically. this keeps the score per
+        # term in [0, 1].
+        num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
+        scores['adamic_adar'] = scoring_methods_fast.simple_only_adamic_adar_scores(pairs_generator, adj_matrix,
+                                                                                     num_docs_word_occurs_in,
+                                                                                     print_timing=print_timing)
+
+        if run_all_implementations:
+            scores['adamic_adar'] = compute_scores_with_transform(pairs_generator, adj_matrix,
+                                                              adamic_adar_transform,
+                                                              print_timing=print_timing,
+                                                              num_docs=all_named_args['num_docs'],
+                                                              pi_vector=all_named_args['pi_vector'])
+        if run_all_implementations >= 2:
+            scores['adamic_adar'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.adamic_adar,
+                                                        print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
+    if 'newman' in which_methods:
+        num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
+        scores['newman'] = compute_scores_with_transform(pairs_generator, adj_matrix,
+                                                         newman_transform,
+                                                         print_timing=print_timing, num_docs=all_named_args['num_docs'],
+                                                         pi_vector=all_named_args['pi_vector'])
+        if run_all_implementations >= 2:
+            scores['newman'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.newman,
+                                                   print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
+
+    if 'shared_weight11' in which_methods:
+        scores['shared_weight11'] = compute_scores_with_transform(pairs_generator, adj_matrix,
+                                                                  shared_weight11_transform,
+                                                                  print_timing=print_timing,
+                                                                  pi_vector=all_named_args['pi_vector'])
+        if run_all_implementations >= 2:
+            scores['shared_weight11'] = compute_scores_orig(pairs_generator(adj_matrix),
+                                                            extra_implementations.shared_weight11, print_timing=print_timing,
+                                                            p_i=all_named_args['pi_vector'])
 
     if 'hamming' in which_methods:
         scores['hamming'] = compute_scores_orig(pairs_generator(adj_matrix), hamming, print_timing=print_timing,
@@ -68,6 +114,9 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
             scores['pearson'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.pearson_as_phi,
                                                     print_timing=print_timing)
             scores['pearson'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.pearson_cor, print_timing=print_timing)
+
+    if 'jaccard' in which_methods:
+        scores['jaccard'] = compute_scores_orig(pairs_generator(adj_matrix), jaccard, print_timing=print_timing)
 
     if 'weighted_corr' in which_methods:
         if sparse.isspmatrix(adj_matrix):
@@ -96,15 +145,6 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
                                             pairs_generator, adj_matrix, pi_vector=all_named_args['pi_vector'],
                                             print_timing=print_timing)['weighted_corr']
 
-    if 'shared_weight11' in which_methods:
-        scores['shared_weight11'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                                  shared_weight11_transform,
-                                                                  print_timing=print_timing,
-                                                                  pi_vector=all_named_args['pi_vector'])
-        if run_all_implementations >= 2:
-            scores['shared_weight11'] = compute_scores_orig(pairs_generator(adj_matrix),
-                                                            extra_implementations.shared_weight11, print_timing=print_timing,
-                                                            p_i=all_named_args['pi_vector'])
     if 'shared_weight1100' in which_methods:
         scores['shared_weight1100'] = compute_scores_from_terms(pairs_generator, adj_matrix, shared_weight1100_terms,
                                                                 pi_vector=all_named_args['pi_vector'],
@@ -117,33 +157,6 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
             scores['shared_weight1100'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.shared_weight1100,
                                                               print_timing=print_timing, p_i=all_named_args['pi_vector'])
 
-    if 'adamic_adar' in which_methods:
-        # for adamic_adar and newman, need to ensure every affil is seen at least twice (for the 1/1 terms,
-        # which are all they use). this happens automatically if p_i was learned empirically. this keeps the score per
-        # term in [0, 1].
-        num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
-        scores['adamic_adar'] = scoring_methods_fast.simple_only_adamic_adar_scores(pairs_generator, adj_matrix,
-                                                                                     num_docs_word_occurs_in,
-                                                                                     print_timing=True)
-
-        if run_all_implementations:
-            scores['adamic_adar'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                              adamic_adar_transform,
-                                                              print_timing=print_timing,
-                                                              num_docs=all_named_args['num_docs'],
-                                                              pi_vector=all_named_args['pi_vector'])
-        if run_all_implementations >= 2:
-            scores['adamic_adar'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.adamic_adar,
-                                                        print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
-    if 'newman' in which_methods:
-        num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
-        scores['newman'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                         newman_transform,
-                                                         print_timing=print_timing, num_docs=all_named_args['num_docs'],
-                                                         pi_vector=all_named_args['pi_vector'])
-        if run_all_implementations >= 2:
-            scores['newman'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.newman,
-                                                   print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
     if 'mixed_pairs' in which_methods:
         for mp_sim in all_named_args['mixed_pairs_sims']:
             method_name = 'mixed_pairs_' + str(mp_sim)
@@ -163,9 +176,9 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
 def item_ids(pairs_generator):
     item1, item2 = [], []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator:
-        item1.append(row_idx1)
-        item2.append(row_idx2)
+    for (_, _, item1_id, item2_id, pair_x, pair_y) in pairs_generator:
+        item1.append(item1_id)
+        item2.append(item2_id)
     return(item1, item2)
 
 
@@ -173,7 +186,7 @@ def item_ids(pairs_generator):
 def compute_scores_orig(pairs_generator, sim_func, print_timing=False, **named_args_to_func):
     start = timer()
     scores = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator:
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator:
         scores.append(sim_func(pair_x, pair_y, **named_args_to_func))
 
     end = timer()
@@ -211,7 +224,7 @@ def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, print
     base_score = value_10 * adj_matrix.shape[1]
     terms_for_11 -= value_10
     terms_for_00 -= value_10
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         sum_11 = terms_for_11.dot(pair_x * pair_y)
         sum_00 = terms_for_00.dot(np.logical_not(pair_x) * np.logical_not(pair_y))
         scores.append(base_score + sum_11 + sum_00 )
@@ -248,7 +261,7 @@ def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, prin
     start = timer()
     transformed_mat = transf_func(adj_matrix, **named_args_to_func)
     scores = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
         scores.append(pair_x.dot(pair_y))
     end = timer()
     if print_timing:
@@ -275,9 +288,9 @@ def shared_size_transform(adj_matrix, back_compat = False):
         return adj_matrix
     else:  # todo: test this version
         if sparse.isspmatrix(adj_matrix):
-            return adj_matrix.multiply(np.sqrt(adj_matrix.shape[1]))
+            return adj_matrix.multiply(1 / np.sqrt(adj_matrix.shape[1]))
         else:
-            return adj_matrix * np.sqrt(adj_matrix.shape[1])
+            return adj_matrix / np.sqrt(adj_matrix.shape[1])
 
 # Leaves matrix sparse if it starts sparse
 def shared_weight11_transform(adj_matrix, pi_vector):

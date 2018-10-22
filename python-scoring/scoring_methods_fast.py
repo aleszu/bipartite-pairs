@@ -22,7 +22,7 @@ def simple_only_cosine(pairs_generator, adj_matrix, weights=None, print_timing=F
 
     if use_package:
         all_pairs_scores = cosine_similarity(transformed_mat)
-        for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
+        for (row_idx1, row_idx2, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
             score = all_pairs_scores[row_idx1, row_idx2]
             cos.append(score if not np.isnan(score) else 0)
 
@@ -36,7 +36,7 @@ def simple_only_cosine(pairs_generator, adj_matrix, weights=None, print_timing=F
             row_norms = np.sqrt((transformed_mat * transformed_mat).sum(axis=1))
             transformed_mat = transformed_mat / row_norms.reshape(-1,1)
 
-        for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
+        for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
             dot_prod = pair_x.dot(pair_y)
             cos.append(dot_prod if not np.isnan(dot_prod) else 0)
 
@@ -62,7 +62,7 @@ def simple_only_pearson(pairs_generator, adj_matrix, print_timing=False):
 
     n = adj_matrix.shape[1]
     scores = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_matrix):
+    for (row_idx1, row_idx2, _, _, pair_x, pair_y) in pairs_generator(transformed_matrix):
         scores.append((pair_x - row_means[row_idx1]).dot(pair_y - row_means[row_idx2]) / float(n))
 
     end = timer()
@@ -80,7 +80,7 @@ def simple_only_adamic_adar_scores(pairs_generator, adj_matrix, affil_counts, pr
         transformed_mat = adj_matrix.multiply(1/np.sqrt(np.log(affil_counts))).tocsr()
     else:
         transformed_mat = adj_matrix / np.sqrt(np.log(affil_counts))
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
         aa.append(pair_x.dot(pair_y))
     end = timer()
     if print_timing:

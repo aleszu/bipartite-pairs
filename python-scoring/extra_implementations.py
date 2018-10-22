@@ -117,7 +117,7 @@ def compute_scores_from_terms0(pairs_generator, adj_matrix, scores_bi_func, prin
     start = timer()
     terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
     scores = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         sum_11 = terms_for_11.dot(pair_x * pair_y)
         sum_00 = terms_for_00.dot(np.logical_not(pair_x) * np.logical_not(pair_y))
         sum_10 = value_10 * np.logical_xor(pair_x, pair_y).sum()
@@ -148,7 +148,7 @@ def simple_only_phi_coeff(pairs_generator, adj_matrix, print_timing=False):
         row_sums = row_sums.A1
     n = adj_matrix.shape[1]
     scores = []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+    for (row_idx1, row_idx2, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         n11 = np.logical_and(pair_x, pair_y).sum()
         scores.append( (n * n11 - row_sums[row_idx1] * row_sums[row_idx2]) /
                  np.sqrt(row_sums[row_idx1] * row_sums[row_idx2] * (n - row_sums[row_idx1]) * (n - row_sums[row_idx2])) )
@@ -166,9 +166,9 @@ def simple_only_weighted_corr(pairs_generator, adj_matrix, pi_vector, print_timi
     transformed_mat = scoring_methods.wc_transform(adj_matrix, pi_vector)
 
     item1, item2, wc = [], [], []
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(transformed_mat):
-        item1.append(row_idx1)
-        item2.append(row_idx2)
+    for (row_idx1, row_idx2, item1_id, item2_id, pair_x, pair_y) in pairs_generator(transformed_mat):
+        item1.append(item1_id)
+        item2.append(item2_id)
         wc.append(pair_x.dot(pair_y))
 
     end = timer()
@@ -187,7 +187,7 @@ def simple_weighted_corr_sparse(pairs_generator, adj_matrix, pi_vector, print_ti
 
     wc = []
     n = float(adj_matrix.shape[1])
-    for (row_idx1, row_idx2, pair_x, pair_y) in pairs_generator(adj_matrix):
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         sum_11 = (pair_x * pair_y).dot(terms_for_11)
         sum_00 = (np.logical_not(pair_x) * np.logical_not(pair_y)).dot(terms_for_00)
         sum_10 = -np.logical_xor(pair_x, pair_y).sum()
