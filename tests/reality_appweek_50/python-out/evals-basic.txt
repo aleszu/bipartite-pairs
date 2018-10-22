@@ -1,0 +1,17 @@
+auc_adamic_adar	0.7215884476534297
+auc_cosine	0.8100361010830325
+auc_cosineIDF	0.6782671480144404
+auc_hamming	0.71028880866426
+auc_jaccard	0.8184837545126353
+auc_mixed_pairs_0.001	0.7462093862815884
+auc_mixed_pairs_0.01	0.7454873646209387
+auc_mixed_pairs_0.1	0.7428880866425993
+auc_newman	0.7010830324909748
+auc_pearson	0.7737906137184115
+auc_shared_size	0.7316967509025271
+auc_shared_weight11	0.6747292418772564
+auc_shared_weight1100	0.7132851985559567
+auc_weighted_corr	0.7464259927797834
+constructAllPairsFromMDocs	75
+numAffils	65
+numPositives	5
