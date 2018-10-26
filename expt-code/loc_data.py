@@ -1,6 +1,10 @@
 from scipy import sparse
 import random
-import score_data
+#import score_data
+import imp
+score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
+import numpy as np
+
 
 # Returns: sparse adjacency matrix, array storing affil name for each column
 # Does not leave a blank row for people w/o data
@@ -68,10 +72,10 @@ def get_loc_expt_data(adj_mat_infile, edges_infile, row_ids_infile):
     adj_mat, row_labels = read_loc_adj_mat(adj_mat_infile)
 
     with open(row_ids_infile, 'r') as fin:
-        row_ids_to_keep = map(int, fin.readline().split())  # row ids are all on one line, space-separated
+        row_ids_to_keep = sorted(map(int, fin.readline().split()))  # row ids are all on one line, space-separated
 
     adj_mat_to_keep = adj_mat[row_ids_to_keep,]
-    row_labels_to_keep = row_labels[sorted(row_ids_to_keep),]
+    row_labels_to_keep = [row_labels[i] for i in row_ids_to_keep]
     label_generator = get_label_generator_from_edgefile(edges_infile, row_labels_to_keep, max(row_labels)+1)
 
     return adj_mat_to_keep, row_labels_to_keep, label_generator
@@ -117,14 +121,15 @@ def get_true_labels_loc_data(pairs_generator, edge_matrix):
 def run_expts_loc_data(loc_data_name='brightkite', existing_data=False, inference_subdir='inference'):
     #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj.txt'
     #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round3.txt'
-    adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round2.txt'
+    #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round2.txt'
+    adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round2_filter.txt'
     edges_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/loc-' + loc_data_name + '_edges.txt'
 
     exptdir = '/Users/lfriedl/Documents/dissertation/binary-ndim/' + loc_data_name + '-expts'
-    for i in range(21, 31):
+    for i in range(31, 41):
         rowIDs_file = exptdir + '/data' + str(i) + '.rowIDs'
         evals_outfile = exptdir + '/' + inference_subdir + '/results' + str(i) + '.txt'
-        scored_pairs_outfile= exptdir + '/' + inference_subdir + '/scoredPairs' + str(i) + ".csv"
+        scored_pairs_outfile= exptdir + '/' + inference_subdir + '/scoredPairs' + str(i) + ".csv.gz"
         if existing_data:
             adj_mat, row_labels, label_generator = get_loc_expt_data(adj_mat_infile, edges_infile, rowIDs_file)
         else:
@@ -137,4 +142,4 @@ def run_expts_loc_data(loc_data_name='brightkite', existing_data=False, inferenc
             score_data.run_and_eval(adj_mat, true_labels_func = label_generator, method_spec="all",
                                     evals_outfile = evals_outfile,
                                     pair_scores_outfile=scored_pairs_outfile, row_labels=row_labels,
-                                    print_timing=True)
+                                    print_timing=True, expt1=True)
