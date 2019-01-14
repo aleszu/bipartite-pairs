@@ -122,11 +122,14 @@ def run_expts_loc_data(loc_data_name='brightkite', existing_data=False, inferenc
     #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj.txt'
     #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round3.txt'
     #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round2.txt'
-    adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round2_filter.txt'
+    #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round2_filter.txt'
+    #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round1.txt'
+    #adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round1_filter.txt'
+    adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/bipartite_adj_round0_filter.txt'
     edges_infile = '/Users/lfriedl/Documents/dissertation/real-data/' + loc_data_name + '/loc-' + loc_data_name + '_edges.txt'
 
     exptdir = '/Users/lfriedl/Documents/dissertation/binary-ndim/' + loc_data_name + '-expts'
-    for i in range(31, 41):
+    for i in range(51, 61):
         rowIDs_file = exptdir + '/data' + str(i) + '.rowIDs'
         evals_outfile = exptdir + '/' + inference_subdir + '/results' + str(i) + '.txt'
         scored_pairs_outfile= exptdir + '/' + inference_subdir + '/scoredPairs' + str(i) + ".csv.gz"
@@ -142,4 +145,4 @@ def run_expts_loc_data(loc_data_name='brightkite', existing_data=False, inferenc
             score_data.run_and_eval(adj_mat, true_labels_func = label_generator, method_spec="all",
                                     evals_outfile = evals_outfile,
                                     pair_scores_outfile=scored_pairs_outfile, row_labels=row_labels,
-                                    print_timing=True, expt1=True)
+                                    print_timing=True) #, expt1=True)

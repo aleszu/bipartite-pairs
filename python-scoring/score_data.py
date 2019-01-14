@@ -67,9 +67,15 @@ def learn_pi_vector(adj_mat):
 
 # Always: remove exact 0s and 1s from data + pi_vector.
 # Optionally: "flip" high p's -- i.e., swap 1's and 0's in the data so that resulting p's are <= .5.
-def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False):
+# expt1: remove affils with 0 or even 1 person attached
+def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
     epsilon = .25 / adj_mat.shape[0]  # If learned from the data, p_i would be in increments of 1/nrows
-    affils_to_keep = np.logical_and(pi_vector >= epsilon, pi_vector <= 1 - epsilon)
+    if (expt1):
+        print "expt1: removing affils with degree 0 *or 1*"
+        affils_to_keep = np.logical_and(pi_vector >= epsilon + float(1)/adj_mat.shape[0],
+                                        pi_vector <= 1 - epsilon - float(1)/adj_mat.shape[0])
+    else:
+        affils_to_keep = np.logical_and(pi_vector >= epsilon, pi_vector <= 1 - epsilon)
     print "Keeping " + ("all " if (affils_to_keep.sum() == adj_mat.shape[0]) else "") \
           + str(affils_to_keep.sum()) + " affils"
     which_nonzero = np.nonzero(affils_to_keep)      # returns a tuple (immutable list) holding 1 element: an ndarray of indices
@@ -106,7 +112,7 @@ def true_labels_for_expts_with_5pairs(pairs_generator):
 # method_spec: list of method names
 def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                  pair_scores_outfile=None, pi_vector_infile=None, flip_high_ps=False,
-                 make_dense=True, row_labels=None, print_timing=False):
+                 make_dense=True, row_labels=None, print_timing=False, expt1=False):
     # note on sparse matrices: adj_mat is initially read in as "coo" format (coordinates of entries). Next few operations
     # will be by column, so it's returned from load_adj_mat as "csc" (compressed sparse column). Then, converted to
     # "csr" in adjust_pi_vector to make pair generation (row slicing) fast.
@@ -117,7 +123,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     else:
         pi_vector = learn_pi_vector(adj_mat)
 
-    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)
+    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps, expt1=expt1)
     if make_dense:
         adj_mat = adj_mat.toarray()
 
