@@ -2,16 +2,17 @@ from scipy.io import mmread
 from scipy import sparse
 import gzip
 import scoring_methods
+import scoring_with_faiss
 from sklearn.metrics import roc_auc_score
 import sys
 import numpy as np
+import pandas as pd
+import bipartite_fitting
+import bipartite_likelihood
 
 
 # If run from the command line, script simply reads data file, saves pairs with scores.
 # Use run_and_eval() for expts: options for loading and manipulating phi, know true pairs and compute AUCs.
-
-# todo:
-# -decide how to specify param values for MixedPairs
 
 # Iterates through all pairs of matrix rows, in the form (i, j) where i < j
 # Rows output are always of type numpy.ndarray()
@@ -109,10 +110,39 @@ def true_labels_for_expts_with_5pairs(pairs_generator):
     return get_true_labels_expt_data(pairs_generator, 5)
 
 
-# method_spec: list of method names
+def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False):
+    graph_models = dict()
+    if bernoulli:
+        if pi_vector is not None:
+            bernoulli = bipartite_likelihood.bernoulliModel(pi_vector)
+        else:
+            bernoulli = bipartite_fitting.learn_bernoulli(adj_mat)
+        graph_models['bernoulli'] = bernoulli
+    if exponential:
+        graph_models['exponential'] = bipartite_fitting.learn_biment(adj_mat)
+    return graph_models
+
+
 def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                  pair_scores_outfile=None, pi_vector_infile=None, flip_high_ps=False,
-                 make_dense=True, row_labels=None, print_timing=False, expt1=False):
+                 make_dense=True, row_labels=None, print_timing=False, expt1=False, learn_exp_model=False):
+    """
+
+    :param adj_mat:
+    :param true_labels_func: identifies the true pairs, given a pairs_generator
+    :param method_spec: list of method names OR the string 'all'
+    :param evals_outfile:
+    :param pair_scores_outfile:
+    :param pi_vector_infile:
+    :param flip_high_ps:
+    :param make_dense:
+    :param row_labels: used when adj_mat's indices differ from original row numbers
+    :param print_timing:
+    :param expt1:
+    :param learn_exp_model:
+    :return:
+    """
+
     # note on sparse matrices: adj_mat is initially read in as "coo" format (coordinates of entries). Next few operations
     # will be by column, so it's returned from load_adj_mat as "csc" (compressed sparse column). Then, converted to
     # "csr" in adjust_pi_vector to make pair generation (row slicing) fast.
@@ -129,16 +159,30 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
     # score pairs
     # (sending in all special args any methods might need)
+
+    want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or ('all' in method_spec)
+    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
+
+    # Run "_faiss" methods first, here.
+    # todo later: add logic so "all" runs one way or the other, not both
+    scores_faiss = scoring_with_faiss.score_pairs_faiss(adj_mat, method_spec, print_timing=print_timing,
+                                                              pi_vector=pi_vector)
+    # todo later: define pairs_generator to use the pairs in scores_data_frame0, if any.
     if row_labels is None:
         pairs_generator = gen_all_pairs
     else:
         def my_pairs_gen(adj_mat):
             return gen_all_pairs(adj_mat, row_labels)
         pairs_generator = my_pairs_gen
+
     scores_data_frame = scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
                                                     pi_vector=pi_vector, num_docs=adj_mat.shape[0],
                                                     mixed_pairs_sims = 'standard',
+                                                    exp_model=graph_models.get('exponential', None),
                                                     print_timing=print_timing)
+    if scores_faiss is not None:
+        scores_data_frame = pd.merge(scores_faiss, scores_data_frame, on=['item1', 'item2'])
+
     method_names = set(scores_data_frame.columns.tolist()) - set(['item1', 'item2'])
     scores_data_frame['label'] = map(int, true_labels_func(pairs_generator(adj_mat)))
 
@@ -153,6 +197,10 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     for method in method_names:
         evals["auc_" + method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
 
+    for model_type, graph_model in graph_models.items():
+        evals["loglikelihood_" + model_type] = graph_model.loglikelihood(adj_mat)
+        evals["akaike_" + model_type] = graph_model.akaike(adj_mat)
+
     evals['constructAllPairsFromMDocs'] = adj_mat.shape[0]      # only correct when we're using all pairs
     evals['numPositives'] = scores_data_frame['label'].sum()
     evals['numAffils'] = adj_mat.shape[1]
@@ -165,9 +213,10 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
 # __main__ function should take: infile (adj_matrix.mm.gz), outfile (edge scores), methods (space-separated list of
 # scoring methods to run)
+# (todo? implement a way to specify param values for MixedPairs at command line)
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print "Usage: python score_data.py adj_matrix.mm.gz pair_scores_out.csv method1 [method2 ...]"
+        print "Usage: python score_data.py adj_matrix.mm.gz pair_scores_out.csv.gz method1 [method2 ...]"
         exit(0)
 
     datafile_mmgz = sys.argv[1]
@@ -187,4 +236,6 @@ if __name__ == "__main__":
     scores_data_frame = scoring_methods.score_pairs(gen_all_pairs, adj_mat, methods, pi_vector=pi_vector)
 
     # save results
-    scores_data_frame.to_csv(edge_scores_outfile)
+    method_names = set(scores_data_frame.columns.tolist()) - set(['item1', 'item2'])
+    scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2'] + sorted(method_names), copy=False)
+    scores_data_frame.to_csv(edge_scores_outfile, index=False, compression="gzip")

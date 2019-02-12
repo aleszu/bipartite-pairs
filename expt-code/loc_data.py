@@ -1,9 +1,10 @@
 from scipy import sparse
 import random
 #import score_data
+import sys
+sys.path.append("../python-scoring")  # for imports w/in score_data
 import imp
 score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
-import numpy as np
 
 
 # Returns: sparse adjacency matrix, array storing affil name for each column
@@ -146,3 +147,10 @@ def run_expts_loc_data(loc_data_name='brightkite', existing_data=False, inferenc
                                     evals_outfile = evals_outfile,
                                     pair_scores_outfile=scored_pairs_outfile, row_labels=row_labels,
                                     print_timing=True) #, expt1=True)
+
+if __name__ == "__main__":
+
+    #run_expts_loc_data()
+    #run_expts_loc_data(loc_data_name = 'gowalla')
+    #run_expts_loc_data(existing_data=True, inference_subdir='inference_round3')
+    run_expts_loc_data(existing_data=True, inference_subdir='inference_round0_filter')

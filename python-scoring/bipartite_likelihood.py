@@ -35,6 +35,18 @@ class bipartiteGraphModel:
             num_params += len(self.item_params)
         return num_params
 
+    def print_params(self):
+        if self.has_density_param:
+            print "model intercept: " + str(round(self.density_param, 5))
+        if self.has_item_params:
+            print "item params: min " + str(round(np.min(self.item_params), 5)) + ", median " + \
+                  str(round(np.median(self.item_params), 5)) + ", max " + str(
+                round(np.max(self.item_params), 5))
+        if self.has_affil_params:
+            print "affil params: min " + str(round(np.min(self.affil_params), 5)) + ", median " + \
+                  str(round(np.median(self.affil_params), 5)) + ", max " + str(
+                round(np.max(self.affil_params), 5))
+
     # lower is better!
     def akaike(self, adj_matrix):
         loglik = self.loglikelihood(adj_matrix)
@@ -50,6 +62,7 @@ class bipartiteGraphModel:
     def loglik_edges_absent(self, item_idx):
         pass
 
+    # higher is better!
     def loglikelihood(self, my_adj_mat):
         tot_score = 0
         # code borrowed from gen_all_pairs, to handle adj_matrices of different classes
@@ -110,3 +123,14 @@ class exponentialModel(bipartiteGraphModel):
     def loglik_edges_absent(self, item_idx):
         e_expression = np.exp(self.density_param + self.item_params[item_idx] + self.affil_params)
         return np.log(1 / (1 + e_expression))
+
+    # a dense matrix
+    def edge_prob_matrix(self):
+        e_expression = np.exp(self.item_params.reshape((-1, 1)) + self.affil_params.reshape((1, -1)) + self.density_param)
+        return (e_expression) / (1 + e_expression)
+
+    # if we don't want to instantiate the whole matrix at a time
+    def edge_prob_row(self, item_idx):
+        e_expression = np.exp(self.density_param + self.item_params[item_idx] + self.affil_params)
+        return (e_expression / (1 + e_expression))
+

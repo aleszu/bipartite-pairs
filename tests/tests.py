@@ -398,20 +398,15 @@ def test_loc_data():
                                 print_timing=True)
 
 
+if __name__ == "__main1__":
+    resources_test(run_all_implementations=False)
+    test_timings("ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
+    test_timings("reality_appweek_50/data50_adjMat.mtx.gz")
+    test_loc_data()
+
+
+
 if __name__ == "__main__":
-    #resources_test(run_all_implementations=False)
-    #test_timings("ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
-    #test_timings("reality_appweek_50/data50_adjMat.mtx.gz")
-    #test_loc_data()
-
-    # the real thing!
-    #loc_data.run_expts_loc_data()
-    #loc_data.run_expts_loc_data(loc_data_name = 'gowalla')
-    #loc_data.run_expts_loc_data(existing_data=True, inference_subdir='inference_round3')
-    loc_data.run_expts_loc_data(existing_data=True, inference_subdir='inference_round0_filter')
-
-
-if __name__ == "__main0__":
     ok = test_adj_and_phi()
     test_adj_and_phi2()
     #test_simple_jaccard()

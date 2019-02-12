@@ -5,12 +5,14 @@ from timeit import default_timer as timer
 import scoring_methods_fast
 import extra_implementations
 
-all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson', 'weighted_corr',
-                       'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs']
+all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson',
+                       'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs',
+                       'weighted_corr', 'weighted_corr_exp']
 # Required args for methods:
 # 'pi_vector' needed for cosineIDF, weighted_corr, shared_weight11, shared_weight1100, adamic_adar, newman
 # 'num_docs' needed for adamic_adar and newman
 # 'mixed_pairs_sims' needed for mixed_pairs
+# 'exp_model' needed for wc_exp
 
 # pairs_generator: a function that takes adj_matrix as an argument
 # run_all_implementations: can use False (default), True or 1 for more, or 2 to do even the slow ones
@@ -145,6 +147,18 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
                                             pairs_generator, adj_matrix, pi_vector=all_named_args['pi_vector'],
                                             print_timing=print_timing)['weighted_corr']
 
+    if 'weighted_corr_exp' in which_methods:
+        if sparse.isspmatrix(adj_matrix):
+            # keep it sparse; can't use fastest method
+            scores['weighted_corr_exp'] = simple_only_wc_exp_scores(pairs_generator, adj_matrix,
+                                                                    exp_model=all_named_args['exp_model'],
+                                                                    print_timing=print_timing)
+
+        else:
+            scores['weighted_corr_exp'] = compute_scores_with_transform(pairs_generator, adj_matrix, wc_exp_transform,
+                                                                        exp_model=all_named_args['exp_model'],
+                                                                        print_timing=print_timing)
+
     if 'shared_weight1100' in which_methods:
         scores['shared_weight1100'] = compute_scores_from_terms(pairs_generator, adj_matrix, shared_weight1100_terms,
                                                                 pi_vector=all_named_args['pi_vector'],
@@ -214,6 +228,21 @@ def hamming(x, y, back_compat = False):
         return 1 - (float(hd)/x.shape[0])
 
 
+# Basic formula, no tricks (yet)  # todo: test
+def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, print_timing=False):
+    start = timer()
+    scores = []
+    for (i, j, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
+        p_rowx = exp_model.edge_prob_row(i)
+        p_rowy = exp_model.edge_prob_row(j)
+        score = np.sum( (pair_x - p_rowx) * (pair_y - p_rowy)/ np.sqrt(p_rowx * p_rowy * (1-p_rowx) * (1-p_rowy))) / len(pair_x)
+        scores.append(score)
+
+    end = timer()
+    if print_timing:
+        print "simple_only_wc_exp_scores: " + str(end - start) + " secs"
+    return scores
+
 
 # This version: rather than explicitly computing the scores for 1/0 terms, have a base_score that assume all entries
 # are 1/0s, and adjust it for 11 and 00s.
@@ -274,27 +303,32 @@ def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, prin
 def wc_transform(adj_matrix, pi_vector):
     return (adj_matrix - pi_vector) / np.sqrt(pi_vector * (1 - pi_vector) * adj_matrix.shape[1])
 
+# See comments for wc_transform
+def wc_exp_transform(adj_matrix, exp_model):
+    edge_probs = exp_model.edge_prob_matrix()
+    return (adj_matrix - edge_probs) / np.sqrt(edge_probs * (1 - edge_probs) * adj_matrix.shape[1])
+
 # Leaves matrix sparse if it starts sparse
-def newman_transform(adj_matrix, pi_vector, num_docs):
+def newman_transform(adj_matrix, pi_vector, num_docs, make_dense=False):
     affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix):
+    if sparse.isspmatrix(adj_matrix) and not make_dense:
         return adj_matrix.multiply(1/np.sqrt(affil_counts.astype(float) - 1)).tocsr()
     else:
         return adj_matrix / np.sqrt(affil_counts.astype(float) - 1)
 
 # Leaves matrix sparse if it starts sparse
-def shared_size_transform(adj_matrix, back_compat = False):
+def shared_size_transform(adj_matrix, back_compat = False, make_dense=False):
     if back_compat:
         return adj_matrix
     else:  # todo: test this version
-        if sparse.isspmatrix(adj_matrix):
+        if sparse.isspmatrix(adj_matrix) and not make_dense:
             return adj_matrix.multiply(1 / np.sqrt(adj_matrix.shape[1]))
         else:
             return adj_matrix / np.sqrt(adj_matrix.shape[1])
 
 # Leaves matrix sparse if it starts sparse
-def shared_weight11_transform(adj_matrix, pi_vector):
-    if sparse.isspmatrix(adj_matrix):
+def shared_weight11_transform(adj_matrix, pi_vector, make_dense=False):
+    if sparse.isspmatrix(adj_matrix) and not make_dense:
         # Keep the matrix sparse if it was before. (By default changes to coo() if I don't cast it tocsr().)
         return adj_matrix.multiply(np.sqrt(np.log(1 / pi_vector))).tocsr()  # .multiply() doesn't exist if adj_matrix is dense
     else:
@@ -302,9 +336,9 @@ def shared_weight11_transform(adj_matrix, pi_vector):
 
 
 # Leaves matrix sparse if it starts sparse
-def adamic_adar_transform(adj_matrix, pi_vector, num_docs):
+def adamic_adar_transform(adj_matrix, pi_vector, num_docs, make_dense=False):
     affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix):
+    if sparse.isspmatrix(adj_matrix) and not make_dense:
         return adj_matrix.multiply(1/np.sqrt(np.log(affil_counts))).tocsr()
     else:
         return adj_matrix / np.sqrt(np.log(affil_counts))
@@ -318,6 +352,6 @@ def adamic_adar_transform(adj_matrix, pi_vector, num_docs):
 # -Slowest methods when using dense adj_mat:
 #   mixedPairs, shared_weight1100; jaccard; hamming, pearson
 #       --> The *_terms methods are the slowest. (Better than the original implementations, but still not very efficient.)
-# -when calling score_pairs with test_all_versions=True, it uses the one that's been fastest on the example data,
+# -when calling score_pairs with run_all_implementations=False, it uses the one that's been fastest on the example data,
 #  but best one could change on different sized data sets, and depending on whether matrix is sparse or dense.
 

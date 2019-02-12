@@ -142,17 +142,35 @@ def describe_exp_model(model_obj, sklearn_ll, adj_mat):
     print "its akaike: " + str(model_obj.akaike(adj_mat))
     if sklearn_ll is not None:
         assert (abs(sklearn_ll - model_obj.loglikelihood(adj_mat)) < 1e-07)
-    if model_obj.has_density_param:
-        print "model intercept: " + str(round(model_obj.density_param, 5))
-    if model_obj.has_item_params:
-        print "item params: min " + str(round(np.min(model_obj.item_params), 5)) + ", median " + \
-              str(round(np.median(model_obj.item_params), 5)) + ", max " + str(round(np.max(model_obj.item_params), 5))
-    if model_obj.has_affil_params:
-        print "affil params: min " + str(round(np.min(model_obj.affil_params), 5)) + ", median " + \
-              str(round(np.median(model_obj.affil_params), 5)) + ", max " + str(round(np.max(model_obj.affil_params), 5))
+    model_obj.print_params()
+
+
+def test_scoring_with_exp_model():
+    adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
+    adj_mat = score_data.load_adj_mat(adj_mat_infile)
+
+    print "version 1: make adj matrix dense"
+    score_data.run_and_eval(adj_mat,
+                            true_labels_func = score_data.true_labels_for_expts_with_5pairs,
+                            method_spec=['weighted_corr', 'weighted_corr_exp'],
+                            evals_outfile = "reality_appweek_50/python-out/exp_models-evals.txt",
+                            pair_scores_outfile="reality_appweek_50/python-out/exp_models-scoredPairs.csv.gz",
+                            print_timing=True)
+
+    print "version 2: keep adj matrix sparse"
+    score_data.run_and_eval(adj_mat,
+                            true_labels_func = score_data.true_labels_for_expts_with_5pairs,
+                            method_spec=['weighted_corr', 'weighted_corr_exp'],
+                            evals_outfile = "reality_appweek_50/python-out/exp_models-evals-sparse.txt",
+                            pair_scores_outfile="reality_appweek_50/python-out/exp_models-scoredPairs-sparse.csv.gz",
+                            print_timing=True, make_dense=False)
+
+
+
 
 
 if __name__ == "__main__":
-    ok = test_create_models()
-    test_learn_special_cases()
-    test_learn_with_log_reg()
+    #ok = test_create_models()
+    #test_learn_special_cases()
+    #test_learn_with_log_reg()
+    test_scoring_with_exp_model()

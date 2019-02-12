@@ -6,10 +6,6 @@ from scipy import sparse
 from sklearn.linear_model import LogisticRegression
 
 
-# todo next: functions that create a bipartiteGraphModel object
-#   def learn_exponential_model(adj_matrix, use_density_param, use_item_params, use_affil_params)
-# and special cases: learn_bernoulli(adj_matrix) to get the usual pi_vector, and learn_biment (navid's: bipartite max ent)
-
 
 # Defaults to the full model; have to turn off unwanted params explicitly.
 def learn_exponential_model(adj_matrix, use_intercept=True, use_item_params=True, use_affil_params=True):
@@ -18,50 +14,48 @@ def learn_exponential_model(adj_matrix, use_intercept=True, use_item_params=True
     # Iterate through entries of the adj_matrix, which become our instances. (Neither matrix is symmetric.)
 
     # for sklearn.linear_model.LogisticRegression, input should be sparse CSR
-    v1 = False
+
     t1 = time.time()
-    if (v1):    # naive version, very slow
-        X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
-        Y_lab = np.zeros(np.product(adj_matrix.shape), dtype=bool)
-        inst_num = 0
-        for i in range(adj_matrix.shape[0]):
-            for j in range(adj_matrix.shape[1]):
-                X_feat[inst_num, i] = use_item_params  # instance inst_num refers to item i
-                X_feat[inst_num, adj_matrix.shape[0] + j] = use_affil_params   # instance inst_num refers to affil j
-                Y_lab[inst_num] = adj_matrix[i,j]   # edge presence/absence
-                inst_num += 1
+    # naive version, very slow
+    # X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
+    # Y_lab = np.zeros(np.product(adj_matrix.shape), dtype=bool)
+    # inst_num = 0
+    # for i in range(adj_matrix.shape[0]):
+    #     for j in range(adj_matrix.shape[1]):
+    #         X_feat[inst_num, i] = use_item_params  # instance inst_num refers to item i
+    #         X_feat[inst_num, adj_matrix.shape[0] + j] = use_affil_params   # instance inst_num refers to affil j
+    #         Y_lab[inst_num] = adj_matrix[i,j]   # edge presence/absence
+    #         inst_num += 1
 
-    else:
-        # Version 2 of matrix construction. indptr tells where the new rows start in the vectors "indices" and "data".
-        # indices stores column indices.
-        Y_lab = adj_matrix.reshape((-1,1)).toarray().squeeze().astype(bool)
+
+    # Version 2 of matrix construction. indptr tells where the new rows start in the vectors "indices" and "data".
+    # indices stores column indices.
+    Y_lab = adj_matrix.reshape((-1,1)).toarray().squeeze().astype(bool)
+    if use_item_params:
+        indices_items = np.concatenate([np.full(shape=adj_matrix.shape[1], fill_value=x) for x in range(adj_matrix.shape[0])])
+    if use_affil_params:
+        indices_affils = range(adj_matrix.shape[0], adj_matrix.shape[0] + adj_matrix.shape[1]) * adj_matrix.shape[0]
+
+    if use_item_params and use_affil_params:
+        # X_feat will have 2 entries per row. Num rows = np.product(adj_matrix.shape).
+        # data and indices will be length 2 * np.product(adj_matrix.shape).
+        # indptr's last entry is their length, but np.arange() needs to be told 1 more than that.
+        indptr = np.arange(start=0, stop=2 * np.product(adj_matrix.shape) + 1, step=2)
+        data = np.full(shape=2 * np.product(adj_matrix.shape), fill_value=True)
+        indices = np.column_stack([indices_items, indices_affils]).reshape(-1)
+        X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
+    elif use_item_params or use_affil_params:
+        # X_feat will have one entry per row
+        indptr = np.arange(start=0, stop=np.product(adj_matrix.shape) + 1, step=1)
+        data = np.full(shape=np.product(adj_matrix.shape), fill_value=True)
+        # which entry?
         if use_item_params:
-            indices_items = np.concatenate([np.full(shape=adj_matrix.shape[1], fill_value=x) for x in range(adj_matrix.shape[0])])
-        if use_affil_params:
-            indices_affils = range(adj_matrix.shape[0], adj_matrix.shape[0] + adj_matrix.shape[1]) * adj_matrix.shape[0]
-
-        if use_item_params and use_affil_params:
-            # X_feat will have 2 entries per row. Num rows = np.product(adj_matrix.shape).
-            # data and indices will be length 2 * np.product(adj_matrix.shape).
-            # indptr's last entry is their length, but np.arange() needs to be told 1 more than that.
-            indptr = np.arange(start=0, stop=2 * np.product(adj_matrix.shape) + 1, step=2)
-            # data = np.ones(2 * np.product(adj_matrix.shape))
-            data = np.full(shape=2 * np.product(adj_matrix.shape), fill_value=True)
-            indices = np.column_stack([indices_items, indices_affils]).reshape(-1)
-            X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
-        elif use_item_params or use_affil_params:
-            # X_feat will have one entry per row
-            indptr = np.arange(start=0, stop=np.product(adj_matrix.shape) + 1, step=1)
-            # data = np.ones(np.product(adj_matrix.shape))
-            data = np.full(shape=np.product(adj_matrix.shape), fill_value=True)
-            # which entry?
-            if use_item_params:
-                indices = indices_items
-            elif use_affil_params:
-                indices = indices_affils
-            X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
-        else:
-            X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
+            indices = indices_items
+        elif use_affil_params:
+            indices = indices_affils
+        X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
+    else:
+        X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
 
     t2 = time.time()
     print 'Feature matrix constructed in {} seconds.'.format(round(t2 - t1), 2)
