@@ -1,14 +1,8 @@
-import sys
-sys.path.append("../python-scoring")  # (see tests.py for syntax)
-                                      # so pycharm-friendly substitute is below. (Need sys.path call to avoid errors
-                                      # from imports within score_data.)
-
-import imp
-score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
-bipartite_likelihood = imp.load_source("bipartite_likelihood", "../python-scoring/bipartite_likelihood.py")
-bipartite_fitting = imp.load_source("bipartite_fitting", "../python-scoring/bipartite_fitting.py")
-
+import score_data
+import bipartite_likelihood
+import bipartite_fitting
 import numpy as np
+
 
 def test_create_models():
     print "Testing the bipartiteGraphModel class"
@@ -65,6 +59,7 @@ def test_create_models():
     print "akaike for ER graph: " + str(er_model.akaike(adj_mat_preproc))
     print "done testing basic object\n"
 
+
 def test_learn_special_cases():
     print "Testing param fitting for the bipartiteGraphModel class"
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
@@ -91,6 +86,7 @@ def test_learn_special_cases():
     # print "its log likelihood: " + str(biment_model.loglikelihood(adj_mat_preproc))
     # print "its akaike: " + str(biment_model.akaike(adj_mat_preproc))
     print "done testing special cases\n"
+
 
 def test_learn_with_log_reg():
     print "Testing param fitting for exponential models using logistic regression"
@@ -170,7 +166,7 @@ def test_scoring_with_exp_model():
 
 
 if __name__ == "__main__":
-    #ok = test_create_models()
+    #test_create_models()
     #test_learn_special_cases()
     #test_learn_with_log_reg()
     test_scoring_with_exp_model()

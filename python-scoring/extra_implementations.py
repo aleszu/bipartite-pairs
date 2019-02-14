@@ -6,11 +6,10 @@ from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr
 from timeit import default_timer as timer
 import pandas
-import scoring_methods
-
-#import scoring_methods
+import transforms_for_dot_prods
 
 ## Indiv pair computations that can be called from compute_scores_orig ##
+
 
 def weighted_corr(x, y, p_i):
 
@@ -163,7 +162,7 @@ def simple_only_phi_coeff(pairs_generator, adj_matrix, print_timing=False):
 # Necessarily makes a dense matrix.
 def simple_only_weighted_corr(pairs_generator, adj_matrix, pi_vector, print_timing=False):
     start = timer()
-    transformed_mat = scoring_methods.wc_transform(adj_matrix, pi_vector)
+    transformed_mat = transforms_for_dot_prods.wc_transform(adj_matrix, pi_vector)
 
     item1, item2, wc = [], [], []
     for (row_idx1, row_idx2, item1_id, item2_id, pair_x, pair_y) in pairs_generator(transformed_mat):

@@ -1,10 +1,6 @@
 from scipy import sparse
 import random
-#import score_data
-import sys
-sys.path.append("../python-scoring")  # for imports w/in score_data
-import imp
-score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
+import score_data
 
 
 # Returns: sparse adjacency matrix, array storing affil name for each column

@@ -1,17 +1,9 @@
 import faiss
-import sys
-# import numpy as np
-# import pandas
-# from scipy import sparse
 from timeit import default_timer as timer
-
-sys.path.append("../python-scoring")  # (see tests.py for syntax)
-                                      # pycharm-friendly call is below. (Need sys.path call to avoid errors
-                                      # from imports within score_data.)
-import imp
-score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
-scoring_with_faiss = imp.load_source("scoring_methods", "../python-scoring/scoring_with_faiss.py")
-loc_data = imp.load_source("loc_data", "../expt-code/loc_data.py")
+import sys
+import score_data
+import scoring_with_faiss
+import loc_data
 
 
 
@@ -64,7 +56,7 @@ def resources_test(run_all_implementations=True):
     # This will let us see how things scale and where memory limits will come in.
     infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
 
-    num_nodes = (100, 1000, 5000)  # my OS kills it at 10000
+    num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
     for num_to_try in num_nodes:
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
@@ -91,6 +83,7 @@ def resources_test(run_all_implementations=True):
         print "for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
             + " affils, "
         print "ran all methods using dense matrix in " + str(end - start) + " seconds"
+
 
 if __name__ == "__main__":
     test_faiss_basic_calls()

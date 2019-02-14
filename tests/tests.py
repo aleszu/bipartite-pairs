@@ -1,20 +1,10 @@
-import sys
-sys.path.append("../python-scoring")  # loads the path for now + later. But "import score_data" highlights as an error,
-                                      # so pycharm-friendly substitute is below. (Need sys.path call to avoid errors
-                                      # from imports within score_data.)
-sys.path.append("../expt-code")
-
-import imp
-score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
-scoring_methods = imp.load_source("scoring_methods", "../python-scoring/scoring_methods.py")
-loc_data = imp.load_source("loc_data", "../expt-code/loc_data.py")
-import numpy as np
+import score_data       # (got rid of clunky imp.load_source calls by adding other dirs to path in PyCharm Prefs)
+import scoring_methods
+import loc_data
 import pandas as pd
 import gzip
 from timeit import default_timer as timer
-import timeit
 from sklearn.metrics import roc_auc_score, roc_curve, auc
-from pympler import asizeof
 
 mapping_from_R_methods = {"label": "label", "m": "shared_size", "d": 'hamming', "one_over_log_p_m11": 'shared_weight11',
                           "one_over_log_p_m1100": 'shared_weight1100', "model5LogLR_t0.01": 'mixed_pairs_0.01',
@@ -25,9 +15,21 @@ our_pi_methods = ['cosineIDF', 'weighted_corr', 'shared_weight11', 'shared_weigh
                   'adamic_adar', 'newman', 'mixed_pairs_0.01']
 
 
-# Read the adj_mat, compute phi, and compare to
+# tolerances: using handful of example data sets, chosen to work around some weird quirks; see comments.
+# Hard-coded as 1e-07 for pi_vector, 1e-10 for an indiv score (1e-05 if it uses [R's iffy] pi_vector), and
+# 1e-04 for AUCs (in one case 1e-03).
+
+
 def test_adj_and_phi():
-    print "Testing reading adjacency matrix and computing pi_vector"
+    """
+    Reads adj matrix, makes sure we can match what R code did for learning pi_vector, preprocessing it, and flipping it.
+
+    Uses & compares to files: 'ng_aa_data1/data15' . [_adj_mat.mtx.gz, .dataphi.txt.gz, .dataphipreproc.txt.gz,
+                                                      .dataphiflipped.txt.gz, .adj_mat_flipped.mtx.gz]
+
+    Throws assertion error if unhappy
+    """
+    print "\n*** Testing reading adjacency matrix and computing pi_vector ***\n"
     # Use the example data files "data15_*". They contain the contents of my expt data file alt.atheism/data1.Rdata
 
     #pi_vector_infile = "ng_aa_data1/data15_phi.txt.gz"  # this is from data1.Rdata, and it's the phi from the whole (larger) data set
@@ -70,12 +72,14 @@ def test_adj_and_phi():
     assert(adj_mat_flipped_R.shape == adj_mat_flipped.shape)
     assert(abs(adj_mat_flipped_R - adj_mat_flipped).max() < 1e-07)
 
-    return True
 
 def test_adj_and_phi2():
-    print "Testing reading adjacency matrix and computing pi_vector (2)"
+    """
+    Reads adj matrix, checks that we can learn pi_vector for a second data set.
+    Using files: "reality_appweek_50/data50_adjMat.mtx.gz", "reality_appweek_50/data50-inference-allto6.phi.csv.gz"
+    """
+    print "\n*** Testing reading adjacency matrix and computing pi_vector (2) ***\n"
     # Use something other than newsgroups! They're too complicated because they were run early.
-    # Using "reality_appweek_50" subdir
 
     # Check that I can learn phi from the adjacency matrix and end up with the version in the inference file
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
@@ -88,14 +92,17 @@ def test_adj_and_phi2():
     # Expect pi_vector_preproc to match pi_vector_preproc_R
     assert(max(abs(pi_vector_preproc - pi_vector_preproc_R)) < 1e-07)
 
-    return True
 
+def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip_high_ps=False, run_all=0):
+    """
+    Starting from an adj matrix, score pairs (using current implementation) and compare to reference file run from R.
+    Similar contents to score_data.run_and_eval().
 
-def test_pair_scores(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip_high_ps=False):
-    print "Testing scores computed for pairs"
-    print "Adj matrix infile: " + adj_mat_infile + "; scored pairs file: " + scored_pairs_file_R
-    # Starting from adj matrix, get phi (tested in test_adj_and_phi2 above), score pairs, and compare scores
-    # to R's
+    :param run_all: set to 2 (or 1) to run and time all (or more) implementations.
+                    However, we only look at the scores of the last one.
+    """
+    print "\n*** Testing scores computed for pairs ***\n"
+    print "Adj matrix infile: " + adj_mat_infile + "; scored pairs reference file: " + scored_pairs_file_R
 
     # Read adj data and prep pi_vector
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -107,10 +114,9 @@ def test_pair_scores(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip
     mixed_pairs_sims = [.01, .001]
     start = timer()
 
-    run_all = 2
     if make_dense:
         adj_mat_preproc = adj_mat_preproc.toarray()
-    scores_data_frame = score_data.scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc,
+    scores_data_frame = scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc,
                                                                which_methods=methods_to_run,
                                                                pi_vector=pi_vector_preproc, back_compat=True,
                                                                num_docs=adj_mat_preproc.shape[0],
@@ -120,12 +126,11 @@ def test_pair_scores(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip
     end = timer()
     print "ran " \
           + str(len(methods_to_run) + (len(mixed_pairs_sims) - 1 if 'mixed_pairs' in methods_to_run else 0)) \
-          + " methods " + "(plus variants) " if run_all else "" \
+          + " methods " + ("(plus variants) " if run_all else "") \
           +  "on " + str(adj_mat.shape[0] * (adj_mat.shape[0]-1)/float(2)) + " pairs"
     print "num seconds: " + str(end - start)
 
     # Read scores from R and compare
-
     with gzip.open(scored_pairs_file_R, 'r') as fpin:
         scores_data_frame_R = pd.read_csv(fpin)
 
@@ -137,57 +142,16 @@ def test_pair_scores(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip
 
             # Sadly, the p_i vectors are off by a smidgen (see notes above), so anything that uses them can
             # differ too. sharedWeight11 vals differed by > 1e-06, and that was with only 65 affils.
-            tolerance = 1e-03 if our_method in our_pi_methods else 1e-10
+            tolerance = 1e-05 if our_method in our_pi_methods else 1e-10
             assert(max(abs(scores_data_frame[our_method] - scores_data_frame_R[R_method])) < tolerance)
 
     return scores_data_frame
 
 
-def test_simple_jaccard():
-    print "itty bitty jaccard test"
-    item1 = np.zeros(shape=(5))
-    item1[3] = item1[2] = 1
-    item2 = np.array([1, 0, 1, 1, 0])
-    print "jaccard gives: " + str(score_data.scoring_methods.jaccard(item1, item2))
-    #print "and with extra ignored args, jaccard gives: " + str(score_data.scoring_methods.jaccard(item1, item2, extra=3, special=4))
-
-def test_only_wc():
-    # Read adj data and prep pi_vector
-    adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
-    adj_mat = score_data.load_adj_mat(adj_mat_infile)
-    pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
-
-    wc_frame = scoring_methods.extra_implementations.simple_only_weighted_corr(score_data.gen_all_pairs, adj_mat_preproc,
-                                                                    pi_vector_preproc, print_timing=True)
-    scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz"
-    with gzip.open(scored_pairs_file_R, 'r') as fpin:
-        scores_data_frame_R = pd.read_csv(fpin)
-
-    print "Checking simple_only_weighted_corr"
-    print "max diff: " + str(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"]).max())
-    assert (max(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"])) < 1e-03)
-    # Wow: it's 10 times faster than the usual method!
-    # I tried implementing other methods the same way, and they were also faster
-    # Eventually I figured out a big part of the savings was from the sparse adj_matrix getting converted to dense,
-    # which makes row access faster.
-    # But in fact, even after doing that, the initial-matrix-transformation way is still ~6x faster, wow.
-
-    # Example timings for test_pair_scores() using sparse input matrix: (from when code converted it to dense)
-    # weighted_corr: 0.272197961807 secs
-    # simple_only_weighted_corr: 0.048122882843 secs
-    # wc_transform: 0.051922082901 secs
-    # ...and using dense input matrix:
-    # weighted_corr: 0.042044878006 secs
-    # simple_only_weighted_corr: 0.00608086585999 secs
-    # wc_transform: 0.00586104393005 secs
-    # One remaining uncertainty: is the difference still a fixed cost to convert to dense, or is it scaling differently?
-
-
 # scores_and_labels: data frame created in test_pair_scores()
 # aucs_file_R: 2-col text file, space separated. col 1: measure; col 2: value
-def test_eval_aucs(scores_and_labels, aucs_file_R):
-    print "Checking AUCs against " + aucs_file_R
+def test_eval_aucs(scores_and_labels, aucs_file_R, tolerance = 1e-07):
+    print "\n*** Checking AUCs against " + aucs_file_R + " ***\n"
 
     with open(aucs_file_R, 'r') as fpin:
         for line in fpin:
@@ -205,184 +169,119 @@ def test_eval_aucs(scores_and_labels, aucs_file_R):
 
                 our_auc = roc_auc_score(y_true=scores_and_labels['label'], y_score=scores_and_labels[our_method])
 
-                # oddly, python's auc computation comes out a bit different than R's for cosine and pearson
-                # (on reality example), even though the indiv scores match up to 1e-15. Why?
+                R_auc = float(value)
+                auc_diff = abs(our_auc - R_auc)
+                print "AUC diff for " + our_method + ": " + str(auc_diff)
+                assert(auc_diff < tolerance)
 
-                # (my changing this one arg doesn't fix it)
-                #my_redone_auc = auc_all_pts(scores_and_labels[our_method], scores_and_labels['label'])
+                # oddly, python's auc computation comes out a bit different than R's for cosine and pearson
+                # (on reality example), even though the indiv scores match up to 1e-15.
 
                 #  --> Seems to be a question of floating point precision: python decides some scores differ at the
                 # > 16th digit, when R thinks they're identical. (Spot checking: they should be identical.)
                 # There's a discussion on the scipy github about whether to do this or not -- they used to allow some
                 # tolerance, but then it made mistakes the other direction.
 
-                R_auc = float(value)
-                auc_diff = abs(our_auc - R_auc)
-                #auc_diff = abs(my_redone_auc - R_auc)
+                # Interestingly, fewer affils --> more tie scores --> more difference. The newsgroups example would work
+                # with tolerance = 1e-13, but in reality example, pearson differs by .0004.
 
-                print "AUC diff for " + our_method + ": " + str(auc_diff)
+                # (changing the arg 'drop_intermediate' had no effect)
+                #my_redone_auc = auc_all_pts(scores_and_labels[our_method], scores_and_labels['label'])
 
-                # large tolerance because the pearson example differs by .0004.
-                # Interestingly, fewer affils --> more ties --> more difference. The newsgroups example would work
-                # with tolerance = 1e-13.
-                tolerance = 1e-03
-                assert(abs(our_auc - R_auc) < tolerance)
-
-
-def auc_all_pts(scores, labels):
-    y_true = [int(x) for x in labels]  # change T/F to 1/0
-    fpr, tpr, _ = roc_curve(y_true, scores, drop_intermediate=False)
-    return auc(fpr, tpr)
+# def auc_all_pts(scores, labels):
+#     y_true = [int(x) for x in labels]  # change T/F to 1/0
+#     fpr, tpr, _ = roc_curve(y_true, scores, drop_intermediate=False)
+#     return auc(fpr, tpr)
 
 
-def resources_test(run_all_implementations=True):
-    # Let's read in portions of a big matrix in increasing size, and for each size, score all pairs (both sparse and dense).
-    # This will let us see how things scale and where memory limits will come in.
-    infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
 
-    num_nodes = (100, 1000, 10000, 100000)
-    num_nodes = [10000] # this size: no run finished in the length of time I was willing to wait
-    num_nodes = [500]
-    for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
-
-        pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
-
-        # (order given here doesn't matter)
-        methods_to_run = ['cosine', 'cosineIDF',
-                          # use fast "transform"
-                          'shared_size', 'adamic_adar', 'newman', 'shared_weight11',
-                          # medium
-                          'hamming', 'pearson',  'jaccard',
-                          # WC uses "transform" when dense, "terms" when sparse -- speed varies accordingly
-                          'weighted_corr',
-                          # only have slow "terms" method
-                           'shared_weight1100', 'mixed_pairs']
-
-        adj_mat_preproc_dense = adj_mat_preproc.toarray()
-        print "\ndense version takes up " + str(sys.getsizeof(adj_mat_preproc_dense)) + " bytes"
-
-        start = timer()
-        scores_data_frame = score_data.scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc_dense,
-                                                                   which_methods=methods_to_run,
-                                                                   pi_vector=pi_vector_preproc, back_compat=True,
-                                                                   num_docs=adj_mat_preproc.shape[0],
-                                                                   mixed_pairs_sims=[.01],
-                                                                   print_timing=True,
-                                                                   run_all_implementations=run_all_implementations)
-        end = timer()
-        print "for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
-            + " affils, "
-        print "ran all methods using dense matrix in " + str(end - start) + " seconds"
-
-        print "\nsparse adj_matrix takes up " + str(asizeof.asizeof(adj_mat_preproc)) + " bytes;"
-
-        start = timer()
-        scores_data_frame = score_data.scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc,
-                                                                   which_methods=methods_to_run,
-                                                                   pi_vector=pi_vector_preproc, back_compat=True,
-                                                                   num_docs=adj_mat_preproc.shape[0],
-                                                                   mixed_pairs_sims=[.01],
-                                                                   print_timing=True,
-                                                                   run_all_implementations=run_all_implementations)
-        end = timer()
-        print "for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
-            + " affils, "
-        print "ran all methods using sparse matrix in " + str(end - start) + " seconds"
-
-# To nail down which versions of a few methods are fastest
-def test_timings(infile):
-
-    print "testing timings using infile " + infile
-    setup = """\
-import imp
-score_data = imp.load_source("score_data", "../python-scoring/score_data.py")
-scoring_methods = imp.load_source("score_data", "../python-scoring/scoring_methods.py")
-""" + \
-"adj_mat_infile = \"" + infile + """\" 
-adj_mat = score_data.load_adj_mat(adj_mat_infile)
-pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
-"""
-
-    s = """\
-    scoring_methods.scoring_methods_fast.simple_only_weighted_corr(score_data.gen_all_pairs, adj_mat_preproc,
-                                                                    pi_vector_preproc, print_timing=False)
+def test_only_wc(adj_mat_infile, scored_pairs_file_R):
     """
-    print "simple_only_weighted_corr:"
-    print timeit.timeit(s, setup=setup, number=100)
+    Like test_pair_scores_against_R(), but checks scores & timing of the function simple_only_weighted_corr().
+    (This was the first scoring method I implemented using a transform of the adj_matrix.)
 
-    s2 = """
-
-scoring_methods.compute_scores_with_transform(score_data.gen_all_pairs, adj_mat_preproc, 
-                                scoring_methods.wc_transform, pi_vector=pi_vector_preproc, print_timing=False)
+    :param adj_mat_infile: local path ending in .mtx.gz
+    :param scored_pairs_file_R: local path ending in .csv.gz
     """
-    print "wc_transform:"
-    print timeit.timeit(s2, setup=setup, number=100)
-    # --> wc_transform is faster for weighted_corr (both made matrix dense)
 
-    s3 = """
-scoring_methods.compute_scores_from_terms(score_data.gen_all_pairs, adj_mat_preproc, scoring_methods.wc_terms,
-                        pi_vector=pi_vector_preproc,
-                        num_affils=adj_mat_preproc.shape[1], print_timing=False)
-    """
-    print "wc_terms:"
-    print timeit.timeit(s3, setup=setup, number=100)
-    s4 = """
- scoring_methods.scoring_methods_fast.simple_weighted_corr_sparse(score_data.gen_all_pairs, adj_mat_preproc,
-                                               pi_vector=pi_vector_preproc,
-                                               print_timing=False)    
-    """
-    print "simple_weighted_corr_sparse:"
-    print timeit.timeit(s4, setup=setup, number=100)
-    # --> for sparse matrix, wc_terms is faster than simple_weighted_corr_sparse
+    print "\n*** Checking simple_only_weighted_corr scores ***\n"
 
+    # Read adj data and prep pi_vector
+    adj_mat = score_data.load_adj_mat(adj_mat_infile)
+    pi_vector_learned = score_data.learn_pi_vector(adj_mat)
+    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
-    # Adamic-adar
-    s5 = """
-scoring_methods.compute_scores_with_transform(score_data.gen_all_pairs, adj_mat_preproc,
-                                              scoring_methods.adamic_adar_transform, 
-                                                      num_docs=adj_mat_preproc.shape[0],
-                                                      pi_vector=pi_vector_preproc)
-    """
-    print "adamic_adar_transform:"
-    print timeit.timeit(s5, setup=setup, number=100)
+    wc_frame = scoring_methods.extra_implementations.simple_only_weighted_corr(score_data.gen_all_pairs, adj_mat_preproc,
+                                                                    pi_vector_preproc, print_timing=True)
+    with gzip.open(scored_pairs_file_R, 'r') as fpin:
+        scores_data_frame_R = pd.read_csv(fpin)
 
-    s6 = """
-num_docs_word_occurs_in = np.maximum(adj_mat_preproc.shape[0] * pi_vector_preproc, 2)
-scoring_methods.extra_implementations.simple_only_adamic_adar_scores(score_data.gen_all_pairs, adj_mat_preproc,
-                                                                                     num_docs_word_occurs_in)
-"""
-    print "simple_only_adamic_adar_scores:"
-    print timeit.timeit(s5, setup=setup, number=100)
-    # --> simple_only_adamic_adar_scores sometimes faster, sometimes slower
+    print "max diff: " + str(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"]).max())
+    assert (max(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"])) < 1e-05)
+    # Wow: it's 10 times faster than the usual method!
+    # I tried implementing other methods the same way, and they were also faster
+    # One part of the savings was from the sparse adj_matrix getting converted to dense, which makes row access faster.
+    # But even after doing that, the initial-matrix-transformation way is still ~6x faster, wow.
 
-    s6 = "scoring_methods.scoring_methods_fast.simple_only_phi_coeff(score_data.gen_all_pairs, adj_mat_preproc)"
-    print "simple_only_phi_coeff:"
-    print timeit.timeit(s6, setup=setup, number=100)
-
-    s7 = "scoring_methods.extra_implementations.simple_only_pearson(score_data.gen_all_pairs, adj_mat_preproc)"
-    print "simple_only_pearson:"
-    print timeit.timeit(s7, setup=setup, number=100)
-    # simple_only_pearson was a bit faster
+    # Example timings for test_pair_scores() using sparse input matrix: (from when code converted it to dense)
+    # weighted_corr: 0.272197961807 secs
+    # simple_only_weighted_corr: 0.048122882843 secs
+    # wc_transform: 0.051922082901 secs
+    # ...and using dense input matrix:
+    # weighted_corr: 0.042044878006 secs
+    # simple_only_weighted_corr: 0.00608086585999 secs
+    # wc_transform: 0.00586104393005 secs
+    # One remaining uncertainty: is the difference still a fixed cost to convert to dense, or is it scaling differently?
 
 
+def test_all_methods_no_changes(adj_mat_infile, results_dir):
+    print "\n*** Checking whether all scores match this package's previous version, for " + results_dir + " ***\n"
 
-# Just tests that it runs; outfiles can be manually compared with backed-up copies if desired
-def test_run_and_eval():
-    # infile --> adj matrix (now moved outside the function)
-    adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
+    orig_pair_scores_file = results_dir + "/scoredPairs-basic.csv.gz.bak"
+    orig_evals_file = results_dir + "/evals-basic.txt.bak"
+
+    new_pair_scores_file = results_dir + "/scoredPairs-basic.csv.gz"
+    new_evals_file = results_dir + "/evals-basic.txt"
+
+    # Run all methods the usual way on reality_appweek_50
+    demo_run_and_eval(adj_mat_infile=adj_mat_infile,
+                      pair_scores_outfile=new_pair_scores_file, evals_outfile=new_evals_file)
+
+    # compare pair scores to stored version (gzip header of files will differ)
+    print "Checking pair scores"
+    with gzip.open(orig_pair_scores_file, 'r') as fpin:
+        orig_scores_data_frame = pd.read_csv(fpin)
+    with gzip.open(new_pair_scores_file, 'r') as fpin:
+        new_scores_data_frame = pd.read_csv(fpin)
+    assert(new_scores_data_frame.equals(orig_scores_data_frame))
+
+    # compare evals to stored version. (Simpler way to compare contents of two files.)
+    print "Checking AUCs/evals files"
+    with open(orig_evals_file, 'r') as f1, open(new_evals_file, 'r') as f2:
+        for line1, line2 in zip(f1, f2):
+            measure1, value1 = line1.split()
+            measure2, value2 = line2.split()
+            assert(measure1 == measure2)
+            # scipy's precision issues again cause different AUCs even though pair scores are identical.
+            # todo(?): truncate pair scores at 15th decimal place before computing AUC
+            assert(abs(float(value1) - float(value2)) < 1e-04)
+
+
+
+# (Renamed to "demo" because it's not testing anything, just runs.)
+def demo_run_and_eval(adj_mat_infile, pair_scores_outfile, evals_outfile):
+
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
     score_data.run_and_eval(adj_mat,
-                            true_labels_func = score_data.true_labels_for_expts_with_5pairs,
+                            true_labels_func=score_data.true_labels_for_expts_with_5pairs,
                             method_spec="all",
-                            evals_outfile = "reality_appweek_50/python-out/evals-basic.txt",
-                            pair_scores_outfile="reality_appweek_50/python-out/scoredPairs-basic.csv.gz")
+                            evals_outfile=evals_outfile,
+                            pair_scores_outfile=pair_scores_outfile,
+                            print_timing=True)
 
 
-def test_loc_data():
+def demo_loc_data():
     # todo: set random seed so this is actually repeatable
     adj_mat_infile = '/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt'
     edges_infile = '/Users/lfriedl/Documents/dissertation/real-data/brightkite/loc-brightkite_edges.txt'
@@ -397,49 +296,49 @@ def test_loc_data():
                                 pair_scores_outfile="brightkite/scoredPairs-ex1.csv.gz", row_labels=row_labels,
                                 print_timing=True)
 
-
+# useful for one-offs
 if __name__ == "__main1__":
-    resources_test(run_all_implementations=False)
-    test_timings("ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
-    test_timings("reality_appweek_50/data50_adjMat.mtx.gz")
-    test_loc_data()
+    # demo_loc_data()
+
+    # The function that does it all, that we'll usually call
+    demo_run_and_eval(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",
+                      pair_scores_outfile="reality_appweek_50/python-out/scoredPairs-basic.csv.gz",
+                      evals_outfile = "reality_appweek_50/python-out/evals-basic.txt")
 
 
 
 if __name__ == "__main__":
-    ok = test_adj_and_phi()
+    test_adj_and_phi()
     test_adj_and_phi2()
-    #test_simple_jaccard()
-    test_only_wc()
 
     # Test reality mining example
-
-    # note: run_all_implementations flag inside score_pairs() means "run and time all versions",
-    # but we only look at the output of the last
-    print "Reality mining, data set #50 -- as sparse matrix"
-    test_pair_scores(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",
-                     scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
-    print "Reality mining, data set #50 -- as dense matrix"
-    scores_frame = test_pair_scores(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",
-                     scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
-                     make_dense=True)  # much faster. But won't scale to large matrices.
+    print "\nReality mining, data set #50 -- as sparse matrix"
+    test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
+    print "\nReality mining, data set #50 -- as dense matrix"
+    scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+                                              scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
+                                              make_dense=True)  # much faster. But won't scale to large matrices.
+    # Test a specific implementation of weighted_corr
+    test_only_wc(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+                 scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
     # Test AUCs for reality ex
-    test_eval_aucs(scores_frame, aucs_file_R = "reality_appweek_50/results50.txt")
+    test_eval_aucs(scores_frame, aucs_file_R = "reality_appweek_50/results50.txt", tolerance = 1e-03)
 
 
-    # Test newsgroups example (plain run was too complicated, but flipped run was later, so
+    # Test newsgroups example (plain run was too complicated to replicate, but flipped run was later, so
     # more standardized)
-    print "Newsgroups, data set #2, flipped -- as sparse matrix"
-    test_pair_scores(adj_mat_infile = "ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
-                     scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
-                     flip_high_ps=True)
-    print "Newsgroups, data set #2, flipped -- as dense matrix"
-    scores_frame = test_pair_scores(adj_mat_infile = "ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
-                     scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
-                     flip_high_ps=True, make_dense=True)
-
+    print "\nNewsgroups, data set #2, flipped -- as sparse matrix"
+    test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
+                               scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
+                               flip_high_ps=True)
+    print "\nNewsgroups, data set #2, flipped -- as dense matrix"
+    scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
+                                              scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
+                                              flip_high_ps=True, make_dense=True)
     # Test AUCs for newsgroups ex
-    test_eval_aucs(scores_frame, aucs_file_R = "ng_aa_data2/results2-flip_allto6.txt")
+    test_eval_aucs(scores_frame, aucs_file_R = "ng_aa_data2/results2-flip_allto6.txt", tolerance = 1e-04)
 
-    # The function that does it all, that we'll usually call
-    test_run_and_eval()
+    # Test all scoring methods against what this package produced earlier
+    test_all_methods_no_changes(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+                                results_dir="reality_appweek_50/python-out")

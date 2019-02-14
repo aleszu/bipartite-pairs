@@ -4,6 +4,7 @@ from scipy import sparse
 from timeit import default_timer as timer
 import scoring_methods_fast
 import extra_implementations
+import transforms_for_dot_prods
 
 all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson',
                        'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs',
@@ -28,6 +29,10 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
     # first pass through the generator to paste in row ids
     scores['item1'], scores['item2'] = item_ids(pairs_generator(adj_matrix))
+
+    # todo: if faiss is installed: for methods that faiss does faster, send them there in batch,
+    # remove them from the regular list, and at the end of this function, inner merge the two DataFrames together
+
 
     # Run them with fastest first:
     # 'cosine', 'cosineIDF'
@@ -58,7 +63,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
     if 'shared_size' in which_methods:
         scores['shared_size'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                              shared_size_transform,
+                                                              transforms_for_dot_prods.shared_size_transform,
                                                               print_timing=print_timing,
                                                               back_compat=all_named_args.get('back_compat', False))
         if run_all_implementations >= 2:
@@ -76,17 +81,17 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
         if run_all_implementations:
             scores['adamic_adar'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                              adamic_adar_transform,
-                                                              print_timing=print_timing,
-                                                              num_docs=all_named_args['num_docs'],
-                                                              pi_vector=all_named_args['pi_vector'])
+                                                                  transforms_for_dot_prods.adamic_adar_transform,
+                                                                  print_timing=print_timing,
+                                                                  num_docs=all_named_args['num_docs'],
+                                                                  pi_vector=all_named_args['pi_vector'])
         if run_all_implementations >= 2:
             scores['adamic_adar'] = compute_scores_orig(pairs_generator(adj_matrix), extra_implementations.adamic_adar,
                                                         print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
     if 'newman' in which_methods:
         num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
         scores['newman'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                         newman_transform,
+                                                         transforms_for_dot_prods.newman_transform,
                                                          print_timing=print_timing, num_docs=all_named_args['num_docs'],
                                                          pi_vector=all_named_args['pi_vector'])
         if run_all_implementations >= 2:
@@ -95,7 +100,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
     if 'shared_weight11' in which_methods:
         scores['shared_weight11'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                                  shared_weight11_transform,
+                                                                  transforms_for_dot_prods.shared_weight11_transform,
                                                                   print_timing=print_timing,
                                                                   pi_vector=all_named_args['pi_vector'])
         if run_all_implementations >= 2:
@@ -128,7 +133,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
                                                                 num_affils=adj_matrix.shape[1], print_timing=print_timing)
 
         else:
-            scores['weighted_corr'] = compute_scores_with_transform(pairs_generator, adj_matrix, wc_transform,
+            scores['weighted_corr'] = compute_scores_with_transform(pairs_generator, adj_matrix, transforms_for_dot_prods.wc_transform,
                                                                     print_timing=print_timing,
                                                                     pi_vector=all_named_args['pi_vector'])
 
@@ -155,7 +160,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
                                                                     print_timing=print_timing)
 
         else:
-            scores['weighted_corr_exp'] = compute_scores_with_transform(pairs_generator, adj_matrix, wc_exp_transform,
+            scores['weighted_corr_exp'] = compute_scores_with_transform(pairs_generator, adj_matrix, transforms_for_dot_prods.wc_exp_transform,
                                                                         exp_model=all_named_args['exp_model'],
                                                                         print_timing=print_timing)
 
@@ -194,6 +199,20 @@ def item_ids(pairs_generator):
         item1.append(item1_id)
         item2.append(item2_id)
     return(item1, item2)
+
+
+# Turns out the scoring functions can be ~10x faster when the function is written as: transform the adjacency matrix, then
+# take dot products of the row pairs.
+def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, print_timing=False, **named_args_to_func):
+    start = timer()
+    transformed_mat = transf_func(adj_matrix, **named_args_to_func)
+    scores = []
+    for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
+        scores.append(pair_x.dot(pair_y))
+    end = timer()
+    if print_timing:
+        print transf_func.__name__ + ": " + str(end - start) + " secs"
+    return scores
 
 
 # General method to return a vector of scores from running one method
@@ -282,66 +301,6 @@ def wc_terms(pi_vector, num_affils):
     terms_for_00 = pi_vector / ((1 - pi_vector) * num_affils)
     return terms_for_11, value_10, terms_for_00
 
-
-
-# Turns out the scoring functions can be ~10x faster when the function is written as: transform the adjacency matrix, then
-# take dot products of the row pairs.
-def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, print_timing=False, **named_args_to_func):
-    start = timer()
-    transformed_mat = transf_func(adj_matrix, **named_args_to_func)
-    scores = []
-    for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
-        scores.append(pair_x.dot(pair_y))
-    end = timer()
-    if print_timing:
-        print transf_func.__name__ + ": " + str(end - start) + " secs"
-    return scores
-
-# Standardize adj_matrix column-wise: for each coln, x --> (x - p_i) / sqrt(p_i(1-p_i))
-# Also multiply denominator by sqrt(num_cols), so that the final dot product returns the mean, not just a sum.
-# Necessarily makes a dense matrix.
-def wc_transform(adj_matrix, pi_vector):
-    return (adj_matrix - pi_vector) / np.sqrt(pi_vector * (1 - pi_vector) * adj_matrix.shape[1])
-
-# See comments for wc_transform
-def wc_exp_transform(adj_matrix, exp_model):
-    edge_probs = exp_model.edge_prob_matrix()
-    return (adj_matrix - edge_probs) / np.sqrt(edge_probs * (1 - edge_probs) * adj_matrix.shape[1])
-
-# Leaves matrix sparse if it starts sparse
-def newman_transform(adj_matrix, pi_vector, num_docs, make_dense=False):
-    affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix) and not make_dense:
-        return adj_matrix.multiply(1/np.sqrt(affil_counts.astype(float) - 1)).tocsr()
-    else:
-        return adj_matrix / np.sqrt(affil_counts.astype(float) - 1)
-
-# Leaves matrix sparse if it starts sparse
-def shared_size_transform(adj_matrix, back_compat = False, make_dense=False):
-    if back_compat:
-        return adj_matrix
-    else:  # todo: test this version
-        if sparse.isspmatrix(adj_matrix) and not make_dense:
-            return adj_matrix.multiply(1 / np.sqrt(adj_matrix.shape[1]))
-        else:
-            return adj_matrix / np.sqrt(adj_matrix.shape[1])
-
-# Leaves matrix sparse if it starts sparse
-def shared_weight11_transform(adj_matrix, pi_vector, make_dense=False):
-    if sparse.isspmatrix(adj_matrix) and not make_dense:
-        # Keep the matrix sparse if it was before. (By default changes to coo() if I don't cast it tocsr().)
-        return adj_matrix.multiply(np.sqrt(np.log(1 / pi_vector))).tocsr()  # .multiply() doesn't exist if adj_matrix is dense
-    else:
-        return adj_matrix * np.sqrt(np.log(1 / pi_vector))  # gives incorrect behavior if adj_matrix is sparse
-
-
-# Leaves matrix sparse if it starts sparse
-def adamic_adar_transform(adj_matrix, pi_vector, num_docs, make_dense=False):
-    affil_counts = np.maximum(num_docs * pi_vector, 2)
-    if sparse.isspmatrix(adj_matrix) and not make_dense:
-        return adj_matrix.multiply(1/np.sqrt(np.log(affil_counts))).tocsr()
-    else:
-        return adj_matrix / np.sqrt(np.log(affil_counts))
 
 
 

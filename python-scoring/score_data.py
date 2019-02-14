@@ -1,12 +1,10 @@
 from scipy.io import mmread
 from scipy import sparse
 import gzip
-import scoring_methods
-import scoring_with_faiss
 from sklearn.metrics import roc_auc_score
 import sys
 import numpy as np
-import pandas as pd
+import scoring_methods
 import bipartite_fitting
 import bipartite_likelihood
 
@@ -66,12 +64,12 @@ def learn_pi_vector(adj_mat):
     return np.asarray(pi_orig).squeeze()
 
 
-# Always: remove exact 0s and 1s from data + pi_vector.
+# Always: remove exact 0s and 1s from columns of data + pi_vector.
 # Optionally: "flip" high p's -- i.e., swap 1's and 0's in the data so that resulting p's are <= .5.
 # expt1: remove affils with 0 or even 1 person attached
 def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
     epsilon = .25 / adj_mat.shape[0]  # If learned from the data, p_i would be in increments of 1/nrows
-    if (expt1):
+    if expt1:
         print "expt1: removing affils with degree 0 *or 1*"
         affils_to_keep = np.logical_and(pi_vector >= epsilon + float(1)/adj_mat.shape[0],
                                         pi_vector <= 1 - epsilon - float(1)/adj_mat.shape[0])
@@ -105,6 +103,7 @@ def get_true_labels_expt_data(pairs_generator, num_true_pairs):
         label = True if (row_idx2 < 2 * num_true_pairs and row_idx1 == row_idx2 - 1 and row_idx2 % 2) else False
         labels.append(label)
     return labels
+
 
 def true_labels_for_expts_with_5pairs(pairs_generator):
     return get_true_labels_expt_data(pairs_generator, 5)
@@ -163,11 +162,10 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or ('all' in method_spec)
     graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
 
-    # Run "_faiss" methods first, here.
-    # todo later: add logic so "all" runs one way or the other, not both
-    scores_faiss = scoring_with_faiss.score_pairs_faiss(adj_mat, method_spec, print_timing=print_timing,
-                                                              pi_vector=pi_vector)
-    # todo later: define pairs_generator to use the pairs in scores_data_frame0, if any.
+    # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
+    # scores_subset =
+    # Once implemented, make pairs_generator use the pairs in scores_subset.
+
     if row_labels is None:
         pairs_generator = gen_all_pairs
     else:
@@ -180,16 +178,16 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                                                     mixed_pairs_sims = 'standard',
                                                     exp_model=graph_models.get('exponential', None),
                                                     print_timing=print_timing)
-    if scores_faiss is not None:
-        scores_data_frame = pd.merge(scores_faiss, scores_data_frame, on=['item1', 'item2'])
+    # if scores_subset is not None:
+    #     scores_data_frame = pd.merge(scores_subset, scores_data_frame, on=['item1', 'item2'])
 
-    method_names = set(scores_data_frame.columns.tolist()) - set(['item1', 'item2'])
+    method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
     scores_data_frame['label'] = map(int, true_labels_func(pairs_generator(adj_mat)))
 
     # save pair scores if desired
     if pair_scores_outfile is not None:
         scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2', 'label'] +
-                                                              sorted(list(method_names - set(['label']))), copy=False)
+                                                              sorted(list(method_names - {'label'})), copy=False)
         scores_data_frame.to_csv(pair_scores_outfile, index=False, compression="gzip")
 
     # compute evals and save
@@ -236,6 +234,6 @@ if __name__ == "__main__":
     scores_data_frame = scoring_methods.score_pairs(gen_all_pairs, adj_mat, methods, pi_vector=pi_vector)
 
     # save results
-    method_names = set(scores_data_frame.columns.tolist()) - set(['item1', 'item2'])
+    method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
     scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2'] + sorted(method_names), copy=False)
     scores_data_frame.to_csv(edge_scores_outfile, index=False, compression="gzip")
