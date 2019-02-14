@@ -5,7 +5,11 @@ import numpy as np
 
 
 def test_create_models():
-    print "Testing the bipartiteGraphModel class"
+    """
+    Tries out constructing bipartiteGraphModel objects (with pre-specified params), checks that loglikelihood & akaike
+     methods match my calculations (here).
+    """
+    print "\n*** Testing the bipartiteGraphModel class ***\n"
     # Using data we've already played with: take its pi_vector, put it into a bernoulliModel,
     # and use model to score the adj_matrix
 
@@ -61,7 +65,11 @@ def test_create_models():
 
 
 def test_learn_special_cases():
-    print "Testing param fitting for the bipartiteGraphModel class"
+    """
+    Tests that Bernoulli model learns the right params and that Exponential model can be fit using learn_biment().
+
+    """
+    print "\n*** Testing param fitting for the bipartiteGraphModel class ***\n"
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
@@ -83,13 +91,17 @@ def test_learn_special_cases():
     biment_model = bipartite_fitting.learn_biment(adj_mat_preproc)
     print "bipartite max entropy model: num_params is " + str(biment_model.get_num_params())
     describe_exp_model(biment_model, None, adj_mat_preproc)
-    # print "its log likelihood: " + str(biment_model.loglikelihood(adj_mat_preproc))
-    # print "its akaike: " + str(biment_model.akaike(adj_mat_preproc))
-    print "done testing special cases\n"
+    print "done testing special cases"
 
 
 def test_learn_with_log_reg():
-    print "Testing param fitting for exponential models using logistic regression"
+    """
+    Fits exponential models using the logistic regression mapping.
+    Tries every possible combo of params to include and prints summary of learned params each time.
+    Checks that the log likelihood of input graph matches sklearn's log likelihood of input data.
+
+    """
+    print "\n*** Testing param fitting for exponential models using logistic regression ***\n"
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
@@ -141,7 +153,11 @@ def describe_exp_model(model_obj, sklearn_ll, adj_mat):
     model_obj.print_params()
 
 
-def test_scoring_with_exp_model():
+def demo_scoring_with_exp_model():
+    """
+    Uses exponential model within the new scoring method 'weighted_corr_exp'.
+
+    """
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
@@ -164,9 +180,10 @@ def test_scoring_with_exp_model():
 
 
 
-
+# These tests aren't very rigorous, but they should all run w/o errors.
+# (Going forward, tests.py makes sure that weighted_corr_exp scores doesn't change on the example data.)
 if __name__ == "__main__":
-    #test_create_models()
-    #test_learn_special_cases()
-    #test_learn_with_log_reg()
-    test_scoring_with_exp_model()
+    test_create_models()
+    test_learn_special_cases()
+    test_learn_with_log_reg()
+    demo_scoring_with_exp_model()

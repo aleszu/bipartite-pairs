@@ -253,7 +253,7 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir):
         orig_scores_data_frame = pd.read_csv(fpin)
     with gzip.open(new_pair_scores_file, 'r') as fpin:
         new_scores_data_frame = pd.read_csv(fpin)
-    assert(new_scores_data_frame.equals(orig_scores_data_frame))
+    assert(new_scores_data_frame.equals(orig_scores_data_frame))  # may need to compare using a tolerance later
 
     # compare evals to stored version. (Simpler way to compare contents of two files.)
     print "Checking AUCs/evals files"
@@ -306,7 +306,7 @@ if __name__ == "__main1__":
                       evals_outfile = "reality_appweek_50/python-out/evals-basic.txt")
 
 
-
+# Everything in "main" actually tests things and should run w/o errors.
 if __name__ == "__main__":
     test_adj_and_phi()
     test_adj_and_phi2()
@@ -342,3 +342,4 @@ if __name__ == "__main__":
     # Test all scoring methods against what this package produced earlier
     test_all_methods_no_changes(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                 results_dir="reality_appweek_50/python-out")
+    # todo: set up this call for additional data sets

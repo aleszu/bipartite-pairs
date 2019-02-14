@@ -1,10 +1,11 @@
+# Scratch work from setting up and trying out faiss calls.
+
 import faiss
 from timeit import default_timer as timer
 import sys
 import score_data
 import scoring_with_faiss
 import loc_data
-
 
 
 def test_faiss_basic_calls():
@@ -39,6 +40,7 @@ def test_score_wc_faiss():
     print 'scores look like (sample):' + str(scores_data_frame.head())
     # note for later: scores_data_frame.reset_index() makes it save item1 & item2 as regular columns, defaults back to index of row numbers
 
+# (caution: 'weighted_corr_faiss' may not work as a method name going forward)
 def test_faiss_plus_normal():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -50,7 +52,8 @@ def test_faiss_plus_normal():
                             evals_outfile="reality_appweek_50/python-out/evals-test.txt",
                             print_timing=True)
 
-# borrowed from tests.py
+
+# borrowed from computational_resources.py
 def resources_test(run_all_implementations=True):
     # Let's read in portions of a big matrix in increasing size, and for each size, score all pairs (both sparse and dense).
     # This will let us see how things scale and where memory limits will come in.
