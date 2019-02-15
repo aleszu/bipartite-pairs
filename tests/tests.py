@@ -17,7 +17,7 @@ our_pi_methods = ['cosineIDF', 'weighted_corr', 'shared_weight11', 'shared_weigh
 
 # tolerances: using handful of example data sets, chosen to work around some weird quirks; see comments.
 # Hard-coded as 1e-07 for pi_vector, 1e-10 for an indiv score (1e-05 if it uses [R's iffy] pi_vector), and
-# 1e-04 for AUCs (in one case 1e-03).
+# 1e-03 for AUCs.
 
 
 def test_adj_and_phi():
@@ -181,6 +181,7 @@ def test_eval_aucs(scores_and_labels, aucs_file_R, tolerance = 1e-07):
                 # > 16th digit, when R thinks they're identical. (Spot checking: they should be identical.)
                 # There's a discussion on the scipy github about whether to do this or not -- they used to allow some
                 # tolerance, but then it made mistakes the other direction.
+                # (e.g., https://github.com/scikit-learn/scikit-learn/issues/3864)
 
                 # Interestingly, fewer affils --> more tie scores --> more difference. The newsgroups example would work
                 # with tolerance = 1e-13, but in reality example, pearson differs by .0004.
@@ -253,7 +254,9 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir):
         orig_scores_data_frame = pd.read_csv(fpin)
     with gzip.open(new_pair_scores_file, 'r') as fpin:
         new_scores_data_frame = pd.read_csv(fpin)
-    assert(new_scores_data_frame.equals(orig_scores_data_frame))  # may need to compare using a tolerance later
+    # assert(new_scores_data_frame.equals(orig_scores_data_frame))  # may need to compare using a tolerance later
+    pd.testing.assert_frame_equal(orig_scores_data_frame, new_scores_data_frame, check_exact=False,
+                                  check_less_precise=10)
 
     # compare evals to stored version. (Simpler way to compare contents of two files.)
     print "Checking AUCs/evals files"
@@ -262,9 +265,7 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir):
             measure1, value1 = line1.split()
             measure2, value2 = line2.split()
             assert(measure1 == measure2)
-            # scipy's precision issues again cause different AUCs even though pair scores are identical.
-            # todo(?): truncate pair scores at 15th decimal place before computing AUC
-            assert(abs(float(value1) - float(value2)) < 1e-04)
+            assert(abs(float(value1) - float(value2)) < 1e-03)
 
 
 
@@ -304,6 +305,8 @@ if __name__ == "__main1__":
     demo_run_and_eval(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",
                       pair_scores_outfile="reality_appweek_50/python-out/scoredPairs-basic.csv.gz",
                       evals_outfile = "reality_appweek_50/python-out/evals-basic.txt")
+    # test_all_methods_no_changes(adj_mat_infile="reality_appweek_50/data50_adjMat.mtx.gz",
+    #                             results_dir="reality_appweek_50/python-out")
 
 
 # Everything in "main" actually tests things and should run w/o errors.

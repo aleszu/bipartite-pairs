@@ -2,6 +2,8 @@ import score_data
 import bipartite_likelihood
 import bipartite_fitting
 import numpy as np
+import loc_data
+from timeit import default_timer as timer
 
 
 def test_create_models():
@@ -64,13 +66,12 @@ def test_create_models():
     print "done testing basic object\n"
 
 
-def test_learn_special_cases():
+def test_learn_special_cases(adj_mat_infile):
     """
     Tests that Bernoulli model learns the right params and that Exponential model can be fit using learn_biment().
 
     """
     print "\n*** Testing param fitting for the bipartiteGraphModel class ***\n"
-    adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
     pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
@@ -94,7 +95,7 @@ def test_learn_special_cases():
     print "done testing special cases"
 
 
-def test_learn_with_log_reg():
+def test_learn_with_log_reg(adj_mat_infile):
     """
     Fits exponential models using the logistic regression mapping.
     Tries every possible combo of params to include and prints summary of learned params each time.
@@ -102,44 +103,43 @@ def test_learn_with_log_reg():
 
     """
     print "\n*** Testing param fitting for exponential models using logistic regression ***\n"
-    adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
     pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     print "learning exponential model with only density param"
     model_only_dens, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=True,
-                                              use_item_params = False, use_affil_params = False)
+                                              use_item_params = False, use_affil_params = False, withLL=True)
     describe_exp_model(model_only_dens, sklearn_ll, adj_mat_preproc)
 
     print "learning exponential model with affil params (should be like bernoulli)"
     model_only_affil, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=False,
-                                              use_item_params = False, use_affil_params = True)
+                                              use_item_params = False, use_affil_params = True, withLL=True)
     describe_exp_model(model_only_affil, sklearn_ll, adj_mat_preproc)
 
     print "learning exponential model with density and affil params (does it beat bernoulli?)"
     model_dens_affil, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=True,
-                                              use_item_params = False, use_affil_params = True)
+                                              use_item_params = False, use_affil_params = True, withLL=True)
     describe_exp_model(model_dens_affil, sklearn_ll, adj_mat_preproc)
 
     print "learning exponential model with item params"
     model_only_item, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=False,
-                                              use_item_params = True, use_affil_params = False)
+                                              use_item_params = True, use_affil_params = False, withLL=True)
     describe_exp_model(model_only_item, sklearn_ll, adj_mat_preproc)
 
     print "learning exponential model with density and item params (does it beat items alone?)"
     model_dens_item, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=True,
-                                              use_item_params = True, use_affil_params = False)
+                                              use_item_params = True, use_affil_params = False, withLL=True)
     describe_exp_model(model_dens_item, sklearn_ll, adj_mat_preproc)
 
     print "learning exponential model with item and affil params (is it like biment?)"
     model_item_affils, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=False,
-                                              use_item_params = True, use_affil_params = True)
+                                              use_item_params = True, use_affil_params = True, withLL=True)
     describe_exp_model(model_item_affils, sklearn_ll, adj_mat_preproc)
 
     print "learning exponential model with density, item and affil params (is it the best?)"
     model_full, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=True,
-                                              use_item_params = True, use_affil_params = True)
+                                              use_item_params = True, use_affil_params = True, withLL=True)
     describe_exp_model(model_full, sklearn_ll, adj_mat_preproc)
     print "finished!"
     print "done testing exponential model\n"
@@ -178,12 +178,45 @@ def demo_scoring_with_exp_model():
                             print_timing=True, make_dense=False)
 
 
+def test_timing_for_fitting_model():
+    # which way is faster, biment or logistic regression?
+    print "\n*** Testing time to fit the exponential model ***\n"
+    infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
+
+    num_nodes = (100, 200, 300, 400, 500)
+    for num_to_try in num_nodes:
+        print "\nnum_nodes = " + str(num_to_try)
+        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        pi_vector_learned = score_data.learn_pi_vector(adj_mat)
+        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+
+        start = timer()
+        model1 = bipartite_fitting.learn_biment(adj_mat_preproc)
+        end = timer()
+        print "fit biment in " + str(end - start) + " seconds"
+        describe_exp_model(model1, None, adj_mat_preproc)
+
+        start = timer()
+        model2, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=False,
+                                                           use_item_params = True, use_affil_params = True)
+        end = timer()
+        print "fit with logistic regression in " + str(end - start) + " seconds"
+        describe_exp_model(model2, sklearn_ll, adj_mat_preproc)
+
+        # notes on computational complexity. both versions return 1 param per node (= num_items + num_affils).
+        # biment: solver instantiates dense matrix the shape of adj_mat, memory-intensive. Could avoid that by
+        # restoring original code, but all those entries need to be computed regardless.
+        # logistic regression: number of entries of adj_mat becomes number of instances in the regression problem. The
+        # sklearn call seems to use a lot of memory, even though it accepts a sparse input matrix.
 
 
 # These tests aren't very rigorous, but they should all run w/o errors.
 # (Going forward, tests.py makes sure that weighted_corr_exp scores doesn't change on the example data.)
 if __name__ == "__main__":
     test_create_models()
-    test_learn_special_cases()
-    test_learn_with_log_reg()
-    demo_scoring_with_exp_model()
+    test_learn_special_cases(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz")
+    test_learn_with_log_reg(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz")
+    test_learn_special_cases(adj_mat_infile = "ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
+    test_learn_with_log_reg(adj_mat_infile = "ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
+    # demo_scoring_with_exp_model()
+    # test_timing_for_fitting_model()
