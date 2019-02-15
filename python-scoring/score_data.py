@@ -159,8 +159,9 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     # score pairs
     # (sending in all special args any methods might need)
 
-    want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or ('all' in method_spec)
-    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
+    want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or\
+                     ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
+    graph_models = learn_graph_models(adj_mat, bernoulli=False, pi_vector=None, exponential=want_exp_model)
 
     # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
     # scores_subset =
@@ -183,6 +184,9 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
     method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
     scores_data_frame['label'] = map(int, true_labels_func(pairs_generator(adj_mat)))
+
+    # round pair scores at 15th decimal place so we don't get spurious diffs in AUCs when replicating
+    scores_data_frame = scores_data_frame.round(decimals={method:15 for method in method_names})
 
     # save pair scores if desired
     if pair_scores_outfile is not None:

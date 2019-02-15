@@ -3,8 +3,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
 from sklearn.preprocessing import scale
-
-
+import transforms_for_dot_prods
 
 # Leaves matrix sparse if it starts sparse
 # use_package=True has a slight speed edge over my implementation, when matrix is dense
@@ -28,13 +27,7 @@ def simple_only_cosine(pairs_generator, adj_matrix, weights=None, print_timing=F
 
     else:  # also implement it myself
         # make each row have unit length
-        if sparse.isspmatrix(transformed_mat):
-            row_norms = 1/np.sqrt(transformed_mat.power(2).sum(axis=1).A1)
-            # To multiply each row of a matrix by a different number, put the numbers into a diagonal matrix to the left
-            transformed_mat = sparse.spdiags(row_norms, 0, len(row_norms), len(row_norms)) * transformed_mat
-        else:
-            row_norms = np.sqrt((transformed_mat * transformed_mat).sum(axis=1))
-            transformed_mat = transformed_mat / row_norms.reshape(-1,1)
+        transformed_mat = transforms_for_dot_prods.cosine_transform(transformed_mat)
 
         for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
             dot_prod = pair_x.dot(pair_y)

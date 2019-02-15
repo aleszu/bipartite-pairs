@@ -4,6 +4,7 @@ from scipy import sparse
 from timeit import default_timer as timer
 import scoring_methods_fast
 import extra_implementations
+import scoring_with_faiss
 import transforms_for_dot_prods
 
 all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson',
@@ -32,6 +33,8 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
     # todo: if faiss is installed: for methods that faiss does faster, send them there in batch,
     # remove them from the regular list, and at the end of this function, inner merge the two DataFrames together
+    methods_for_faiss = [x for x in which_methods if x[-6:] == '_faiss']
+    which_methods = set(which_methods) - set(methods_for_faiss)
 
 
     # Run them with fastest first:
@@ -190,7 +193,13 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
                                                       p_i = all_named_args['pi_vector'], sim=mp_sim,
                                                       print_timing=print_timing)
 
-    return pandas.DataFrame(scores)
+    our_data_frame = pandas.DataFrame(scores)
+    if len(methods_for_faiss):
+        faiss_data_frame = scoring_with_faiss.score_pairs_faiss_all_exact(adj_matrix, methods_for_faiss,
+                                                                      print_timing=print_timing, **all_named_args)
+        return our_data_frame.merge(faiss_data_frame)
+    else:
+        return our_data_frame
 
 
 def item_ids(pairs_generator):
@@ -266,6 +275,10 @@ def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, print_timi
 # This version: rather than explicitly computing the scores for 1/0 terms, have a base_score that assume all entries
 # are 1/0s, and adjust it for 11 and 00s.
 def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, print_timing=False, **named_args_to_func):
+    if not sparse.isspmatrix(adj_matrix):
+        return compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func,
+                                               print_timing=print_timing, **named_args_to_func)
+
     start = timer()
     terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
     scores = []
@@ -280,6 +293,29 @@ def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, print
     end = timer()
     if print_timing:
         print scores_bi_func.__name__ + ": " + str(end - start) + " secs"
+    return scores
+
+
+# quick attempt to do like compute_faiss_terms_scores() -- only possible for dense
+def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func, print_timing=False, **named_args_to_func):
+    start = timer()
+    terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
+    scores = []
+    base_score = value_10 * adj_matrix.shape[1]
+    terms_for_11 -= value_10
+    terms_for_00 -= value_10
+
+    adj1 = adj_matrix * np.sqrt(terms_for_11)
+    adj2 = np.logical_not(adj_matrix) * np.sqrt(terms_for_00)
+
+    for (i, j, _, _, pair_x, pair_y) in pairs_generator(adj1):
+        sum_11 = pair_x.dot(pair_y)
+        sum_00 = adj2[i,].dot(adj2[j,])
+        scores.append(base_score + sum_11 + sum_00 )
+
+    end = timer()
+    if print_timing:
+        print "dense " + scores_bi_func.__name__ + ": " + str(end - start) + " secs"
     return scores
 
 
@@ -307,10 +343,17 @@ def wc_terms(pi_vector, num_affils):
 # Current status on speed (notes to self):
 # -Dense matrix calcs are much faster. It's a time vs. space tradeoff.
 # -Slowest methods, when using sparse adj_mat:
-#   weightedCorr, shared_weight1100, mixedPairs; jaccard
-# -Slowest methods when using dense adj_mat:
-#   mixedPairs, shared_weight1100; jaccard; hamming, pearson
-#       --> The *_terms methods are the slowest. (Better than the original implementations, but still not very efficient.)
+#   shared_weight1100, mixedPairs & weightedCorr; pearson, jaccard & hamming
+# -Slowest methods when using dense adj_mat: [I improved the *_terms methods for dense!]
+#   jaccard & pearson; hamming
 # -when calling score_pairs with run_all_implementations=False, it uses the one that's been fastest on the example data,
 #  but best one could change on different sized data sets, and depending on whether matrix is sparse or dense.
 
+# Ways to improve:
+# -sklearn's cosine is far faster than my other methods. Could use sklearn's linear_product for dot products (etc) --
+#  likely also faster than my code. It preserves sparse matrices.
+# But: sklearn methods do all_pairs by default. (Scoring pairs as they come out of the pairs_generator, as my code
+# does, is probably terrible for speed.) Scoring only a subset would be non-trivial.
+#
+# Not fussing with these right now, because faiss is yet faster. (Betting on being able to use it even with
+# sparse matrices.)
