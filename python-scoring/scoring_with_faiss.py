@@ -11,7 +11,10 @@ all_faiss_methods = ['shared_size_faiss', 'adamic_adar_faiss', 'newman_faiss', '
                        'weighted_corr_faiss', 'weighted_corr_exp_faiss', 'mixed_pairs_faiss', 'pearson_faiss',
                      'cosine_faiss', 'cosineIDF_faiss', 'shared_weight1100_faiss']
 
-# note: faiss methods all require dense version of adj matrix
+# Note: faiss methods all require dense version of adj matrix. (Converting it to work on sparse (in batches) will
+# require revamping compute_faiss_terms_scores(), too.)
+# To keep things simple, I'll ask the calling function, score_pairs, to only send in dense matrices. Meaning this
+# package will generally only be called from run_and_eval(make_dense=True).
 
 # wrapper for all-pairs exact distances using "Flat" index
 # Returns a DataFrame with of all pairs
@@ -33,8 +36,7 @@ def score_pairs_faiss(adj_matrix, which_methods, how_many_neighbors=-1, print_ti
         scores['shared_size_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                       transforms_for_dot_prods.shared_size_transform,
                                                                       how_many_neighbors, print_timing=print_timing,
-                                                                      back_compat=all_named_args.get('back_compat', False),
-                                                                      make_dense=True)
+                                                                      back_compat=all_named_args.get('back_compat', False))
     if 'pearson_faiss' in which_methods:
         scores['pearson_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                   transforms_for_dot_prods.pearson_transform,
@@ -42,33 +44,30 @@ def score_pairs_faiss(adj_matrix, which_methods, how_many_neighbors=-1, print_ti
     if 'cosine_faiss' in which_methods:
         scores['cosine_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                  transforms_for_dot_prods.cosine_transform,
-                                                                 how_many_neighbors, print_timing=print_timing,
-                                                                 make_dense=True)
+                                                                 how_many_neighbors, print_timing=print_timing)
     if 'cosineIDF_faiss' in which_methods:
         idf_weights = np.log(1 / all_named_args['pi_vector'])
         scores['cosineIDF_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                     transforms_for_dot_prods.cosine_weights_transform,
                                                                     how_many_neighbors, weights=idf_weights,
-                                                                    print_timing=print_timing, make_dense=True)
+                                                                    print_timing=print_timing)
     if 'adamic_adar_faiss' in which_methods:
         scores['adamic_adar_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                       transforms_for_dot_prods.adamic_adar_transform,
                                                                       how_many_neighbors, print_timing=print_timing,
                                                                       num_docs=all_named_args['num_docs'],
-                                                                      pi_vector=all_named_args['pi_vector'],
-                                                                      make_dense=True)
+                                                                      pi_vector=all_named_args['pi_vector'])
     if 'newman_faiss' in which_methods:
         scores['newman_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                  transforms_for_dot_prods.newman_transform,
                                                                  how_many_neighbors, print_timing=print_timing,
                                                                  num_docs=all_named_args['num_docs'],
-                                                                 pi_vector=all_named_args['pi_vector'], make_dense=True)
+                                                                 pi_vector=all_named_args['pi_vector'])
     if 'shared_weight11_faiss' in which_methods:
         scores['shared_weight11_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                           transforms_for_dot_prods.shared_weight11_transform,
                                                                           how_many_neighbors, print_timing=print_timing,
-                                                                          pi_vector=all_named_args['pi_vector'],
-                                                                          make_dense=True)
+                                                                          pi_vector=all_named_args['pi_vector'])
     if 'weighted_corr_faiss' in which_methods:
         scores['weighted_corr_faiss'] = compute_faiss_dotprod_distances(adj_matrix,
                                                                         transforms_for_dot_prods.wc_transform,
@@ -97,7 +96,7 @@ def score_pairs_faiss(adj_matrix, which_methods, how_many_neighbors=-1, print_ti
     if len(scores):
         if how_many_neighbors == -1:
             # iterate through all pairs --> array
-            scores_array = np.empty((adj_matrix.shape[0] * (adj_matrix.shape[0]-1)/2, 2 + len(scores)))
+            scores_array = np.empty((adj_matrix.shape[0] * (adj_matrix.shape[0]-1)/2, 2 + len(scores)), dtype=np.float32)
             cnt = 0
             for i in range(adj_matrix.shape[0]):
                 for j in range(i+1, adj_matrix.shape[0]):
@@ -136,14 +135,17 @@ def convert_dist_results_to_matrix(distances, neighbors):
     return mtx
 
 
-# For faiss, transf_func needs to return a dense matrix, so:
-# --> this function needs 'make_dense=True' to be passed in (for the *_transform functions that allow it).
-# Or maybe simpler (todo?), just check and convert it after the transf_func.
+# transf_func may use 'make_dense=True', but we'll make the output dense here regardless.
 def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors, print_timing=False, **named_args_to_func):
     start0 = timer()
     # transformation
     start = timer()
-    transformed_mat = np.ascontiguousarray(transf_func(adj_matrix, **named_args_to_func).astype('float32'))
+    transformed_mat = transf_func(adj_matrix, **named_args_to_func).astype('float32')
+    if sparse.isspmatrix(transformed_mat):
+        transformed_mat = np.ascontiguousarray(transformed_mat.toarray())
+    else:
+        transformed_mat = np.ascontiguousarray(transformed_mat)
+
     if print_timing:
         end = timer()
         print "\t" + transf_func.__name__ + " of adj_matrix: " + str(end - start) + " secs"
@@ -175,7 +177,7 @@ def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors,
 
     if print_timing:
         end = timer()
-        print "total compute_faiss_dotprod_distances for " + transf_func.__name__ + ": " + str(end - start0) + " secs"
+        print "total compute_faiss_dotprod_distances for " + transf_func.__name__[:-10] + ": " + str(end - start0) + " secs"
 
     return dists_matrix
 

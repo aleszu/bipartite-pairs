@@ -16,8 +16,8 @@ our_pi_methods = ['cosineIDF', 'weighted_corr', 'shared_weight11', 'shared_weigh
 
 
 # tolerances: using handful of example data sets, chosen to work around some weird quirks; see comments.
-# Hard-coded as 1e-07 for pi_vector, 1e-10 for an indiv score (1e-05 if it uses [R's iffy] pi_vector), and
-# 1e-03 for AUCs.
+# Hard-coded as 1e-07 for pi_vector, 1e-10 for an indiv score (1e-05 if it uses [R's iffy] pi_vector, and sadly 1e-02
+# when comparing to FAISS-produced scores), and 1e-03 for AUCs.
 
 
 def test_adj_and_phi():
@@ -93,7 +93,8 @@ def test_adj_and_phi2():
     assert(max(abs(pi_vector_preproc - pi_vector_preproc_R)) < 1e-07)
 
 
-def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip_high_ps=False, run_all=0):
+def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip_high_ps=False, run_all=0,
+                               prefer_faiss=False):
     """
     Starting from an adj matrix, score pairs (using current implementation) and compare to reference file run from R.
     Similar contents to score_data.run_and_eval().
@@ -121,7 +122,8 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
                                                                pi_vector=pi_vector_preproc, back_compat=True,
                                                                num_docs=adj_mat_preproc.shape[0],
                                                                mixed_pairs_sims=mixed_pairs_sims,
-                                                               print_timing=True, run_all_implementations=run_all)
+                                                               print_timing=True, run_all_implementations=run_all,
+                                                    prefer_faiss=prefer_faiss)
     scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat), num_true_pairs=5)
     end = timer()
     print "ran " \
@@ -142,7 +144,11 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
 
             # Sadly, the p_i vectors are off by a smidgen (see notes above), so anything that uses them can
             # differ too. sharedWeight11 vals differed by > 1e-06, and that was with only 65 affils.
-            tolerance = 1e-05 if our_method in our_pi_methods else 1e-10
+            tolerance = 1e-10
+            if prefer_faiss:
+                tolerance = 1e-04
+            elif our_method in our_pi_methods:
+                tolerance = 1e-05
             assert(max(abs(scores_data_frame[our_method] - scores_data_frame_R[R_method])) < tolerance)
 
     return scores_data_frame
@@ -205,7 +211,7 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R):
     :param scored_pairs_file_R: local path ending in .csv.gz
     """
 
-    print "\n*** Checking simple_only_weighted_corr scores ***\n"
+    print "\n*** Checking simple_only_weighted_corr against scores from R ***\n"
 
     # Read adj data and prep pi_vector
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -235,7 +241,7 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R):
     # One remaining uncertainty: is the difference still a fixed cost to convert to dense, or is it scaling differently?
 
 
-def test_all_methods_no_changes(adj_mat_infile, results_dir):
+def test_all_methods_no_changes(adj_mat_infile, results_dir, prefer_faiss=False):
     print "\n*** Checking whether all scores match this package's previous version, for " + results_dir + " ***\n"
 
     orig_pair_scores_file = results_dir + "/scoredPairs-basic.csv.gz.bak"
@@ -246,7 +252,8 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir):
 
     # Run all methods the usual way on reality_appweek_50
     demo_run_and_eval(adj_mat_infile=adj_mat_infile,
-                      pair_scores_outfile=new_pair_scores_file, evals_outfile=new_evals_file)
+                      pair_scores_outfile=new_pair_scores_file, evals_outfile=new_evals_file,
+                      prefer_faiss=prefer_faiss)
 
     # compare pair scores to stored version (gzip header of files will differ)
     print "Checking pair scores"
@@ -255,8 +262,9 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir):
     with gzip.open(new_pair_scores_file, 'r') as fpin:
         new_scores_data_frame = pd.read_csv(fpin)
     # assert(new_scores_data_frame.equals(orig_scores_data_frame))  # may need to compare using a tolerance later
+    tolerance = 2 if prefer_faiss else 10
     pd.testing.assert_frame_equal(orig_scores_data_frame, new_scores_data_frame, check_exact=False,
-                                  check_less_precise=10)
+                                  check_less_precise=tolerance)
 
     # compare evals to stored version. (Simpler way to compare contents of two files.)
     print "Checking AUCs/evals files"
@@ -270,7 +278,7 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir):
 
 
 # (Renamed to "demo" because it's not testing anything, just runs.)
-def demo_run_and_eval(adj_mat_infile, pair_scores_outfile, evals_outfile):
+def demo_run_and_eval(adj_mat_infile, pair_scores_outfile, evals_outfile, prefer_faiss=False):
 
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
@@ -279,7 +287,7 @@ def demo_run_and_eval(adj_mat_infile, pair_scores_outfile, evals_outfile):
                             method_spec="all",
                             evals_outfile=evals_outfile,
                             pair_scores_outfile=pair_scores_outfile,
-                            print_timing=True)
+                            print_timing=True, prefer_faiss=prefer_faiss)
 
 
 def demo_loc_data():
@@ -314,6 +322,10 @@ if __name__ == "__main__":
     test_adj_and_phi()
     test_adj_and_phi2()
 
+    # Test a specific implementation of weighted_corr
+    test_only_wc(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+                 scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
+
     # Test reality mining example
     print "\nReality mining, data set #50 -- as sparse matrix"
     test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
@@ -322,9 +334,10 @@ if __name__ == "__main__":
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
                                               make_dense=True)  # much faster. But won't scale to large matrices.
-    # Test a specific implementation of weighted_corr
-    test_only_wc(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
-                 scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
+    print "\nReality mining, data set #50 -- dense with FAISS"
+    scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+                                              scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
+                                              make_dense=True, prefer_faiss=True)
     # Test AUCs for reality ex
     test_eval_aucs(scores_frame, aucs_file_R = "reality_appweek_50/results50.txt", tolerance = 1e-03)
 
@@ -339,10 +352,19 @@ if __name__ == "__main__":
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                               scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
                                               flip_high_ps=True, make_dense=True)
+    print "\nNewsgroups, data set #2, flipped -- dense with FAISS"
+    scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
+                                              scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
+                                              flip_high_ps=True, make_dense=True, prefer_faiss=True)
     # Test AUCs for newsgroups ex
     test_eval_aucs(scores_frame, aucs_file_R = "ng_aa_data2/results2-flip_allto6.txt", tolerance = 1e-04)
 
     # Test all scoring methods against what this package produced earlier
+    print "\n*** Running and saving aucs file to compare with our standard one ***\n"
     test_all_methods_no_changes(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                 results_dir="reality_appweek_50/python-out")
+
+    print "\n*** Running with FAISS and saving aucs file to compare with our standard one ***\n"
+    test_all_methods_no_changes(adj_mat_infile="reality_appweek_50/data50_adjMat.mtx.gz",
+                                results_dir="reality_appweek_50/python-out", prefer_faiss=True)
     # todo: set up this call for additional data sets

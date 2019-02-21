@@ -109,10 +109,12 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         print "\n*** Running all faiss methods ***\n"
+        print "(asked for " + str(num_to_try) + " nodes)"
         # adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
-        # turns out fitting the exponential model is a first bottleneck
-        methods_to_run = set(scoring_with_faiss.all_faiss_methods) - {'weighted_corr_exp_faiss'}
+        # turns out fitting the exponential model is a first bottleneck <- not any more!
+        # methods_to_run = set(scoring_with_faiss.all_faiss_methods) - {'weighted_corr_exp_faiss'}
+        methods_to_run = scoring_with_faiss.all_faiss_methods
 
         start = timer()
         score_data.run_and_eval(adj_mat,
@@ -176,9 +178,9 @@ if __name__ == "__main__":
     # test_score_wc_faiss()
     # test_faiss_plus_normal()
     # resources_test()
-    test_all_faiss_methods(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
-                           evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
-                           scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")
+    # test_all_faiss_methods(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+    #                        evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
+    #                        scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")
     compare_timings_faiss_normal(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                            evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
                            scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")

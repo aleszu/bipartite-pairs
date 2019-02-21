@@ -18,6 +18,9 @@ def wc_exp_transform(adj_matrix, exp_model):
 
 # Leaves matrix sparse if it starts sparse
 def newman_transform(adj_matrix, pi_vector, num_docs, make_dense=False):
+    # for adamic_adar and newman, need to ensure every affil is seen at least twice (for the 1/1 terms,
+    # which are all they use). this happens automatically if p_i was learned empirically. this keeps the score per
+    # term in [0, 1].
     affil_counts = np.maximum(num_docs * pi_vector, 2)
     if sparse.isspmatrix(adj_matrix) and not make_dense:
         return adj_matrix.multiply(1 / np.sqrt(affil_counts.astype(float) - 1)).tocsr()
@@ -37,8 +40,8 @@ def shared_size_transform(adj_matrix, back_compat=False, make_dense=False):
 
 
 # Leaves matrix sparse if it starts sparse
-def shared_weight11_transform(adj_matrix, pi_vector, make_dense=False):
-    if sparse.isspmatrix(adj_matrix) and not make_dense:
+def shared_weight11_transform(adj_matrix, pi_vector):
+    if sparse.isspmatrix(adj_matrix):
         # Keep the matrix sparse if it was before. (By default changes to coo() if I don't cast it tocsr().)
         return adj_matrix.multiply(
             np.sqrt(np.log(1 / pi_vector))).tocsr()  # .multiply() doesn't exist if adj_matrix is dense

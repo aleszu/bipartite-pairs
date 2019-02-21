@@ -124,7 +124,8 @@ def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=Fals
 
 def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                  pair_scores_outfile=None, pi_vector_infile=None, flip_high_ps=False,
-                 make_dense=True, row_labels=None, print_timing=False, expt1=False, learn_exp_model=False):
+                 make_dense=True, row_labels=None, print_timing=False, expt1=False, learn_exp_model=False,
+                 prefer_faiss=False):
     """
 
     :param adj_mat:
@@ -161,7 +162,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
     want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or\
                      ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
-    graph_models = learn_graph_models(adj_mat, bernoulli=False, pi_vector=None, exponential=want_exp_model)
+    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
 
     # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
     # scores_subset =
@@ -178,7 +179,8 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                                                     pi_vector=pi_vector, num_docs=adj_mat.shape[0],
                                                     mixed_pairs_sims = 'standard',
                                                     exp_model=graph_models.get('exponential', None),
-                                                    print_timing=print_timing)
+                                                    print_timing=print_timing,
+                                                    prefer_faiss=prefer_faiss)
     # if scores_subset is not None:
     #     scores_data_frame = pd.merge(scores_subset, scores_data_frame, on=['item1', 'item2'])
 

@@ -7,6 +7,91 @@ from scipy.stats import pearsonr
 from timeit import default_timer as timer
 import pandas
 import transforms_for_dot_prods
+import scoring_methods
+import scoring_methods_fast
+
+# Instead of clogging up score_pairs with these slower versions, put the calls together and out of the way.
+# This function runs those that are inside the "if run_all_implementations >= 2:" branches and others that
+# are definitely slower than the main versions.
+def run_extra_implementations2(pairs_generator, adj_matrix, which_methods, print_timing=False, **all_named_args):
+    scores = {}
+    if which_methods == 'all':
+        which_methods = scoring_methods.all_defined_methods
+    if all_named_args.get('mixed_pairs_sims', None) == 'standard':
+        all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
+
+    # first pass through the generator to paste in row ids
+    scores['item1'], scores['item2'] = scoring_methods.item_ids(pairs_generator(adj_matrix))
+
+
+    if 'cosine' in which_methods:
+        scores['cosine'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), cosine_sim,
+                                               print_timing=print_timing)
+        scores['cosine'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix,
+                                                                   print_timing=print_timing, use_package=False)
+    if 'cosineIDF' in which_methods:
+        idf_weights = np.log(1/all_named_args['pi_vector'])
+        scores['cosineIDF'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), cosine_sim,
+                                                  print_timing=print_timing, weights=idf_weights)
+        scores['cosineIDF'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, weights=idf_weights,
+                                                                      print_timing=print_timing, use_package=False)
+    if 'shared_size' in which_methods:
+        scores['shared_size'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), shared_size,
+                                                   print_timing=print_timing,
+                                                   back_compat=all_named_args.get('back_compat', False))
+    if 'adamic_adar' in which_methods:
+        # for adamic_adar and newman, need to ensure every affil is seen at least twice (for the 1/1 terms,
+        # which are all they use). this happens automatically if p_i was learned empirically. this keeps the score per
+        # term in [0, 1].
+        num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
+        scores['adamic_adar'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), adamic_adar,
+                                                    print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
+    if 'newman' in which_methods:
+        num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
+        scores['newman'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), newman,
+                                               print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
+
+    if 'shared_weight11' in which_methods:
+        scores['shared_weight11'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix),
+                                                        shared_weight11, print_timing=print_timing,
+                                                        p_i=all_named_args['pi_vector'])
+
+    if 'pearson' in which_methods:
+        scores['pearson'] = simple_only_phi_coeff(pairs_generator, adj_matrix, print_timing=print_timing)
+        scores['pearson'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), pearson_as_phi,
+                                                print_timing=print_timing)
+        scores['pearson'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), pearson_cor, print_timing=print_timing)
+
+    if 'weighted_corr' in which_methods:
+        scores['weighted_corr'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), weighted_corr,
+                                                      print_timing=print_timing, p_i=all_named_args['pi_vector'])
+        scores['weighted_corr'] = compute_scores_from_terms0(pairs_generator, adj_matrix,
+                                                            scoring_methods.wc_terms, pi_vector=all_named_args['pi_vector'],
+                                                            num_affils=adj_matrix.shape[1], print_timing=print_timing)
+
+    if 'shared_weight1100' in which_methods:
+        scores['shared_weight1100'] = compute_scores_from_terms0(pairs_generator, adj_matrix,
+                                                                 scoring_methods.shared_weight1100_terms,
+                                                                 pi_vector=all_named_args['pi_vector'],
+                                                                 print_timing=print_timing)
+
+        scores['shared_weight1100'] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), shared_weight1100,
+                                                          print_timing=print_timing, p_i=all_named_args['pi_vector'])
+
+    if 'mixed_pairs' in which_methods:
+        for mp_sim in all_named_args['mixed_pairs_sims']:
+            method_name = 'mixed_pairs_' + str(mp_sim)
+            scores[method_name] = scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), mixed_pairs,
+                                                  p_i = all_named_args['pi_vector'], sim=mp_sim,
+                                                  print_timing=print_timing)
+            scores[method_name] = compute_scores_from_terms0(pairs_generator, adj_matrix,
+                                                             scoring_methods.mixed_pairs_terms,
+                                                             pi_vector=all_named_args['pi_vector'], sim=mp_sim,
+                                                             print_timing=print_timing)
+
+
+    return pandas.DataFrame(scores)
+
 
 ## Indiv pair computations that can be called from compute_scores_orig ##
 

@@ -64,22 +64,6 @@ def simple_only_pearson(pairs_generator, adj_matrix, print_timing=False):
     return scores
 
 
-
-# Leaves matrix sparse if it starts sparse
-def simple_only_adamic_adar_scores(pairs_generator, adj_matrix, affil_counts, print_timing=False):
-    start = timer()
-    aa = []
-    if sparse.isspmatrix(adj_matrix):
-        transformed_mat = adj_matrix.multiply(1/np.sqrt(np.log(affil_counts))).tocsr()
-    else:
-        transformed_mat = adj_matrix / np.sqrt(np.log(affil_counts))
-    for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
-        aa.append(pair_x.dot(pair_y))
-    end = timer()
-    if print_timing:
-        print 'simple_only_adamic_adar_scores: ' + str(end - start) + " secs"
-    return aa
-
 # Sparsity type rules (notes to self):
 # -Each function's comments say whether it's forced to create a dense matrix
 # -A scipy.sparse made dense turns into a matrix(), while if I convert it to dense outside, it'll be (and stay) an ndarray
