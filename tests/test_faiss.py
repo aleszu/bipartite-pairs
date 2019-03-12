@@ -1,13 +1,15 @@
 # Scratch work from setting up and trying out faiss calls.
 
+import sys
+sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
+sys.path.append("../expt-code")
+
 import faiss
 from timeit import default_timer as timer
 import sys
 import score_data
 import scoring_with_faiss
 import loc_data
-sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
-sys.path.append("../expt-code")
 
 
 

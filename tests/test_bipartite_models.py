@@ -1,12 +1,13 @@
+import sys
+sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
+sys.path.append("../expt-code")
+
 import score_data
 import bipartite_likelihood
 import bipartite_fitting
 import numpy as np
 import loc_data
 from timeit import default_timer as timer
-import sys
-sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
-sys.path.append("../expt-code")
 
 
 

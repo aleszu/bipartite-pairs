@@ -1,3 +1,7 @@
+import sys
+sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
+sys.path.append("../expt-code")
+
 import score_data       # (got rid of clunky imp.load_source calls by adding other dirs to path in PyCharm Prefs)
 import scoring_methods
 import loc_data
@@ -5,9 +9,6 @@ import pandas as pd
 import gzip
 from timeit import default_timer as timer
 from sklearn.metrics import roc_auc_score, roc_curve, auc
-import sys
-sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
-sys.path.append("../expt-code")
 
 
 mapping_from_R_methods = {"label": "label", "m": "shared_size", "d": 'hamming', "one_over_log_p_m11": 'shared_weight11',
