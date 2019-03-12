@@ -6,6 +6,9 @@ import sys
 import score_data
 import scoring_with_faiss
 import loc_data
+sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
+sys.path.append("../expt-code")
+
 
 
 def test_faiss_basic_calls():
@@ -54,6 +57,8 @@ def test_score_wc_faiss():
 
 
 # (caution: 'weighted_corr_faiss' may not work as a method name going forward)
+# todo: make test work again. Currently fails because pandas tries to merge 2 identical data frames, and ends up
+# with nothing
 def test_faiss_plus_normal():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -174,13 +179,13 @@ def test_all_faiss_methods(adj_mat_infile, evals_outfile, scored_pairs_outfile=N
 
 
 if __name__ == "__main__":
-    # test_faiss_basic_calls()
-    # test_score_wc_faiss()
+    test_faiss_basic_calls()
+    test_score_wc_faiss()
     # test_faiss_plus_normal()
     # resources_test()
-    # test_all_faiss_methods(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
-    #                        evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
-    #                        scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")
-    compare_timings_faiss_normal(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+    test_all_faiss_methods(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                            evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
                            scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")
+    # compare_timings_faiss_normal(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+    #                        evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
+    #                        scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")

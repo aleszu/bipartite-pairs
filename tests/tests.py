@@ -5,6 +5,10 @@ import pandas as pd
 import gzip
 from timeit import default_timer as timer
 from sklearn.metrics import roc_auc_score, roc_curve, auc
+import sys
+sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
+sys.path.append("../expt-code")
+
 
 mapping_from_R_methods = {"label": "label", "m": "shared_size", "d": 'hamming', "one_over_log_p_m11": 'shared_weight11',
                           "one_over_log_p_m1100": 'shared_weight1100', "model5LogLR_t0.01": 'mixed_pairs_0.01',
@@ -306,19 +310,21 @@ def demo_loc_data():
                                 print_timing=True)
 
 # useful for one-offs
-if __name__ == "__main1__":
+if __name__ == "__main__":
+    score_data.score_only('../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_graph.mtx.gz', ['weighted_corr_exp'],
+                          '../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_new_pair_scores.csv.gz', print_timing=True)
     # demo_loc_data()
 
     # The function that does it all, that we'll usually call
-    demo_run_and_eval(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",
-                      pair_scores_outfile="reality_appweek_50/python-out/scoredPairs-basic.csv.gz",
-                      evals_outfile = "reality_appweek_50/python-out/evals-basic.txt")
+    # demo_run_and_eval(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",
+    #                   pair_scores_outfile="reality_appweek_50/python-out/scoredPairs-basic.csv.gz",
+    #                   evals_outfile = "reality_appweek_50/python-out/evals-basic.txt")
     # test_all_methods_no_changes(adj_mat_infile="reality_appweek_50/data50_adjMat.mtx.gz",
     #                             results_dir="reality_appweek_50/python-out")
 
 
 # Everything in "main" actually tests things and should run w/o errors.
-if __name__ == "__main__":
+if __name__ == "__main0__":
     test_adj_and_phi()
     test_adj_and_phi2()
 

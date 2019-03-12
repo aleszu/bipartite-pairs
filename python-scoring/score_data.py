@@ -43,9 +43,12 @@ def gen_all_pairs(my_adj_mat, row_labels=None):
 
 # Infile must be in "matrix market" format and gzipped
 # Returns a "compressed sparse column" matrix (for efficient column slicing)
-def load_adj_mat(datafile_mmgz):
+def load_adj_mat(datafile_mmgz, make_binary = True):
     with gzip.open(datafile_mmgz, 'r') as fp_mm:
         adj_mat = mmread(fp_mm).astype(int, copy=False)  # creates a scipy.sparse.coo_matrix, if matrix was sparse
+    if make_binary:     # change edge weights to 1
+        adj_mat = adj_mat.astype(bool, copy=False).astype(int, copy=False)
+
     print "Read data: " + str(adj_mat.shape[0]) + " items, " + str(adj_mat.shape[1]) + " affiliations"
     return adj_mat.tocsc()
 
@@ -108,8 +111,8 @@ def get_true_labels_expt_data(pairs_generator, num_true_pairs):
 def true_labels_for_expts_with_5pairs(pairs_generator):
     return get_true_labels_expt_data(pairs_generator, 5)
 
-
-def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False):
+# (max_iter_biment moved here to be easier to change. we did hit ~51k iterations for one matrix, dims 969 x 42k)
+def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False, max_iter_biment=5000):
     graph_models = dict()
     if bernoulli:
         if pi_vector is not None:
@@ -118,7 +121,7 @@ def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=Fals
             bernoulli = bipartite_fitting.learn_bernoulli(adj_mat)
         graph_models['bernoulli'] = bernoulli
     if exponential:
-        graph_models['exponential'] = bipartite_fitting.learn_biment(adj_mat)
+        graph_models['exponential'] = bipartite_fitting.learn_biment(adj_mat, max_iter=max_iter_biment)
     return graph_models
 
 
@@ -213,6 +216,50 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
         print "Saving results to " + evals_outfile
         for (measure, val) in sorted(evals.iteritems()):
             fpout.write(measure + '\t' + str(val) + '\n')
+
+
+def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=False,
+                 make_dense=True, row_labels=None, print_timing=False, learn_exp_model=False,
+                 prefer_faiss=True):
+
+    adj_mat = load_adj_mat(adj_mat_file)
+    pi_vector = learn_pi_vector(adj_mat)
+    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)
+    if make_dense:
+        adj_mat = adj_mat.toarray()
+
+    want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or \
+                     ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
+    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
+
+    for model_type, graph_model in graph_models.items():
+        print("loglikelihood " + model_type + ": " + str(graph_model.loglikelihood(adj_mat)))
+        print("akaike " + model_type + ": " + str(graph_model.akaike(adj_mat)))
+
+    # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
+    # scores_subset =
+    # Once implemented, make pairs_generator use the pairs in scores_subset.
+
+    if row_labels is None:
+        pairs_generator = gen_all_pairs
+    else:
+        def my_pairs_gen(adj_mat):
+            return gen_all_pairs(adj_mat, row_labels)
+
+        pairs_generator = my_pairs_gen
+
+    scores_data_frame = scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
+                                                    pi_vector=pi_vector, num_docs=adj_mat.shape[0],
+                                                    mixed_pairs_sims='standard',
+                                                    exp_model=graph_models.get('exponential', None),
+                                                    print_timing=print_timing,
+                                                    prefer_faiss=prefer_faiss)
+
+    # save results
+    method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
+    scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2'] + sorted(method_names), copy=False)
+    scores_data_frame.to_csv(pair_scores_outfile, index=False, compression="gzip")
+    print('scored pairs saved to ' + pair_scores_outfile)
 
 
 # __main__ function should take: infile (adj_matrix.mm.gz), outfile (edge scores), methods (space-separated list of

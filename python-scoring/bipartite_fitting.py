@@ -100,12 +100,12 @@ def learn_bernoulli(adj_matrix):
     return bipartite_likelihood.bernoulliModel(np.asarray(pi_vector).squeeze())
 
 
-def learn_biment(adj_matrix):
+def learn_biment(adj_matrix, max_iter=5000):
     # from Albert
     item_degrees = np.asarray(adj_matrix.sum(axis=1)).squeeze()
     affil_degrees = np.asarray(adj_matrix.sum(axis=0)).squeeze()
     # temp change for testing!
-    X, Y, X_bak, Y_bak = BiMent_solver(item_degrees, affil_degrees, tolerance=1e-5, max_iter=5000)
+    X, Y, X_bak, Y_bak = BiMent_solver(item_degrees, affil_degrees, tolerance=1e-5, max_iter=max_iter)
     #phi_ia = X[:, None] * Y / (1 + X[:, None] * Y)  # P(edge) matrix
 
     if X_bak is None and Y_bak is None:
