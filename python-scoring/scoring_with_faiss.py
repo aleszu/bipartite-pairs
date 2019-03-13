@@ -1,3 +1,4 @@
+from __future__ import print_function
 import faiss
 import numpy as np
 import pandas
@@ -148,7 +149,7 @@ def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors,
 
     if print_timing:
         end = timer()
-        print "\t" + transf_func.__name__ + " of adj_matrix: " + str(end - start) + " secs"
+        print("\t" + transf_func.__name__ + " of adj_matrix: " + str(end - start) + " secs")
 
     # index construction
     start = timer()
@@ -156,7 +157,7 @@ def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors,
     faiss_index.add(transformed_mat)
     if print_timing and False:
         end = timer()
-        print "\t" + "faiss index construction: " + str(end - start) + " secs"
+        print("\t" + "faiss index construction: " + str(end - start) + " secs")
 
     start = timer()
     # querying for neighbors
@@ -164,7 +165,7 @@ def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors,
         distances, neighbors = faiss_index.search(transformed_mat, how_many_neighbors)
         if print_timing and False:
             end = timer()
-            print "\t" + "faiss querying for " + transf_func.__name__ + ": " + str(end - start) + " secs"
+            print("\t" + "faiss querying for " + transf_func.__name__ + ": " + str(end - start) + " secs")
 
         dists_matrix = convert_dist_results_to_matrix(distances, neighbors)
 
@@ -177,7 +178,7 @@ def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors,
 
     if print_timing:
         end = timer()
-        print "total compute_faiss_dotprod_distances for " + transf_func.__name__[:-10] + ": " + str(end - start0) + " secs"
+        print("total compute_faiss_dotprod_distances for " + transf_func.__name__[:-10] + ": " + str(end - start0) + " secs")
 
     return dists_matrix
 
@@ -208,7 +209,7 @@ def compute_faiss_terms_scores(adj_matrix, scores_bi_func, print_timing=False, *
     final_scores = dists1 + dists2 + base_score
     if print_timing:
         end = timer()
-        print "total compute_faiss_terms_scores for " + scores_bi_func.__name__ + ": " + str(end - start) + " secs"
+        print("total compute_faiss_terms_scores for " + scores_bi_func.__name__ + ": " + str(end - start) + " secs")
 
     return final_scores
 

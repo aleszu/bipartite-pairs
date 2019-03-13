@@ -1,3 +1,4 @@
+from __future__ import print_function
 import sys
 sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
 sys.path.append("../expt-code")
@@ -34,7 +35,7 @@ def test_adj_and_phi():
 
     Throws assertion error if unhappy
     """
-    print "\n*** Testing reading adjacency matrix and computing pi_vector ***\n"
+    print("\n*** Testing reading adjacency matrix and computing pi_vector ***\n")
     # Use the example data files "data15_*". They contain the contents of my expt data file alt.atheism/data1.Rdata
 
     #pi_vector_infile = "ng_aa_data1/data15_phi.txt.gz"  # this is from data1.Rdata, and it's the phi from the whole (larger) data set
@@ -83,7 +84,7 @@ def test_adj_and_phi2():
     Reads adj matrix, checks that we can learn pi_vector for a second data set.
     Using files: "reality_appweek_50/data50_adjMat.mtx.gz", "reality_appweek_50/data50-inference-allto6.phi.csv.gz"
     """
-    print "\n*** Testing reading adjacency matrix and computing pi_vector (2) ***\n"
+    print("\n*** Testing reading adjacency matrix and computing pi_vector (2) ***\n")
     # Use something other than newsgroups! They're too complicated because they were run early.
 
     # Check that I can learn phi from the adjacency matrix and end up with the version in the inference file
@@ -107,8 +108,8 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
     :param run_all: set to 2 (or 1) to run and time all (or more) implementations.
                     However, we only look at the scores of the last one.
     """
-    print "\n*** Testing scores computed for pairs ***\n"
-    print "Adj matrix infile: " + adj_mat_infile + "; scored pairs reference file: " + scored_pairs_file_R
+    print("\n*** Testing scores computed for pairs ***\n")
+    print("Adj matrix infile: " + adj_mat_infile + "; scored pairs reference file: " + scored_pairs_file_R)
 
     # Read adj data and prep pi_vector
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -131,11 +132,11 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
                                                     prefer_faiss=prefer_faiss)
     scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat), num_true_pairs=5)
     end = timer()
-    print "ran " \
+    print("ran " \
           + str(len(methods_to_run) + (len(mixed_pairs_sims) - 1 if 'mixed_pairs' in methods_to_run else 0)) \
           + " methods " + ("(plus variants) " if run_all else "") \
-          +  "on " + str(adj_mat.shape[0] * (adj_mat.shape[0]-1)/float(2)) + " pairs"
-    print "num seconds: " + str(end - start)
+          +  "on " + str(adj_mat.shape[0] * (adj_mat.shape[0]-1)/float(2)) + " pairs")
+    print("num seconds: " + str(end - start))
 
     # Read scores from R and compare
     with gzip.open(scored_pairs_file_R, 'r') as fpin:
@@ -143,9 +144,9 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
 
     for (R_method, our_method) in mapping_from_R_methods.iteritems():
         if our_method in list(scores_data_frame):
-            print "Checking " + our_method
+            print("Checking " + our_method)
             # R data doesn't have item numbers, but is in the same all-pairs order as ours
-            print "max diff: " + str(abs(scores_data_frame[our_method] - scores_data_frame_R[R_method]).max() )
+            print("max diff: " + str(abs(scores_data_frame[our_method] - scores_data_frame_R[R_method]).max() ))
 
             # Sadly, the p_i vectors are off by a smidgen (see notes above), so anything that uses them can
             # differ too. sharedWeight11 vals differed by > 1e-06, and that was with only 65 affils.
@@ -162,7 +163,7 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
 # scores_and_labels: data frame created in test_pair_scores()
 # aucs_file_R: 2-col text file, space separated. col 1: measure; col 2: value
 def test_eval_aucs(scores_and_labels, aucs_file_R, tolerance = 1e-07):
-    print "\n*** Checking AUCs against " + aucs_file_R + " ***\n"
+    print("\n*** Checking AUCs against " + aucs_file_R + " ***\n")
 
     with open(aucs_file_R, 'r') as fpin:
         for line in fpin:
@@ -182,7 +183,7 @@ def test_eval_aucs(scores_and_labels, aucs_file_R, tolerance = 1e-07):
 
                 R_auc = float(value)
                 auc_diff = abs(our_auc - R_auc)
-                print "AUC diff for " + our_method + ": " + str(auc_diff)
+                print("AUC diff for " + our_method + ": " + str(auc_diff))
                 assert(auc_diff < tolerance)
 
                 # oddly, python's auc computation comes out a bit different than R's for cosine and pearson
@@ -216,7 +217,7 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R):
     :param scored_pairs_file_R: local path ending in .csv.gz
     """
 
-    print "\n*** Checking simple_only_weighted_corr against scores from R ***\n"
+    print("\n*** Checking simple_only_weighted_corr against scores from R ***\n")
 
     # Read adj data and prep pi_vector
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -228,7 +229,7 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R):
     with gzip.open(scored_pairs_file_R, 'r') as fpin:
         scores_data_frame_R = pd.read_csv(fpin)
 
-    print "max diff: " + str(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"]).max())
+    print("max diff: " + str(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"]).max()))
     assert (max(abs(wc_frame["weighted_corr"] - scores_data_frame_R["pearsonWeighted"])) < 1e-05)
     # Wow: it's 10 times faster than the usual method!
     # I tried implementing other methods the same way, and they were also faster
@@ -247,7 +248,7 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R):
 
 
 def test_all_methods_no_changes(adj_mat_infile, results_dir, prefer_faiss=False):
-    print "\n*** Checking whether all scores match this package's previous version, for " + results_dir + " ***\n"
+    print("\n*** Checking whether all scores match this package's previous version, for " + results_dir + " ***\n")
 
     orig_pair_scores_file = results_dir + "/scoredPairs-basic.csv.gz.bak"
     orig_evals_file = results_dir + "/evals-basic.txt.bak"
@@ -261,7 +262,7 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir, prefer_faiss=False)
                       prefer_faiss=prefer_faiss)
 
     # compare pair scores to stored version (gzip header of files will differ)
-    print "Checking pair scores"
+    print("Checking pair scores")
     with gzip.open(orig_pair_scores_file, 'r') as fpin:
         orig_scores_data_frame = pd.read_csv(fpin)
     with gzip.open(new_pair_scores_file, 'r') as fpin:
@@ -272,7 +273,7 @@ def test_all_methods_no_changes(adj_mat_infile, results_dir, prefer_faiss=False)
                                   check_less_precise=tolerance)
 
     # compare evals to stored version. (Simpler way to compare contents of two files.)
-    print "Checking AUCs/evals files"
+    print("Checking AUCs/evals files")
     with open(orig_evals_file, 'r') as f1, open(new_evals_file, 'r') as f2:
         for line1, line2 in zip(f1, f2):
             measure1, value1 = line1.split()
@@ -302,7 +303,7 @@ def demo_loc_data():
     rows_outfile = 'brightkite/data-ex1.txt'
     adj_mat, row_labels, label_generator = loc_data.read_sample_save(adj_mat_infile, edges_infile, num_nodes=300, rows_outfile=rows_outfile)
     if label_generator is None:
-        print "Found no edges; stopping"
+        print("Found no edges; stopping")
 
     else:
         score_data.run_and_eval(adj_mat, true_labels_func = label_generator, method_spec="all",
@@ -311,7 +312,7 @@ def demo_loc_data():
                                 print_timing=True)
 
 # useful for one-offs
-if __name__ == "__main__":
+if __name__ == "__main0__":
     score_data.score_only('../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_graph.mtx.gz', ['weighted_corr_exp'],
                           '../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_new_pair_scores.csv.gz', print_timing=True)
     # demo_loc_data()
@@ -325,7 +326,7 @@ if __name__ == "__main__":
 
 
 # Everything in "main" actually tests things and should run w/o errors.
-if __name__ == "__main0__":
+if __name__ == "__main__":
     test_adj_and_phi()
     test_adj_and_phi2()
 
@@ -334,14 +335,14 @@ if __name__ == "__main0__":
                  scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
 
     # Test reality mining example
-    print "\nReality mining, data set #50 -- as sparse matrix"
+    print("\nReality mining, data set #50 -- as sparse matrix")
     test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
-    print "\nReality mining, data set #50 -- as dense matrix"
+    print("\nReality mining, data set #50 -- as dense matrix")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
                                               make_dense=True)  # much faster. But won't scale to large matrices.
-    print "\nReality mining, data set #50 -- dense with FAISS"
+    print("\nReality mining, data set #50 -- dense with FAISS")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
                                               make_dense=True, prefer_faiss=True)
@@ -351,15 +352,15 @@ if __name__ == "__main0__":
 
     # Test newsgroups example (plain run was too complicated to replicate, but flipped run was later, so
     # more standardized)
-    print "\nNewsgroups, data set #2, flipped -- as sparse matrix"
+    print("\nNewsgroups, data set #2, flipped -- as sparse matrix")
     test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
                                flip_high_ps=True)
-    print "\nNewsgroups, data set #2, flipped -- as dense matrix"
+    print("\nNewsgroups, data set #2, flipped -- as dense matrix")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                               scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
                                               flip_high_ps=True, make_dense=True)
-    print "\nNewsgroups, data set #2, flipped -- dense with FAISS"
+    print("\nNewsgroups, data set #2, flipped -- dense with FAISS")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                               scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
                                               flip_high_ps=True, make_dense=True, prefer_faiss=True)
@@ -367,11 +368,11 @@ if __name__ == "__main0__":
     test_eval_aucs(scores_frame, aucs_file_R = "ng_aa_data2/results2-flip_allto6.txt", tolerance = 1e-04)
 
     # Test all scoring methods against what this package produced earlier
-    print "\n*** Running and saving aucs file to compare with our standard one ***\n"
+    print("\n*** Running and saving aucs file to compare with our standard one ***\n")
     test_all_methods_no_changes(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                 results_dir="reality_appweek_50/python-out")
 
-    print "\n*** Running with FAISS and saving aucs file to compare with our standard one ***\n"
+    print("\n*** Running with FAISS and saving aucs file to compare with our standard one ***\n")
     test_all_methods_no_changes(adj_mat_infile="reality_appweek_50/data50_adjMat.mtx.gz",
                                 results_dir="reality_appweek_50/python-out", prefer_faiss=True)
     # todo: set up this call for additional data sets

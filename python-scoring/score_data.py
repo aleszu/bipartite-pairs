@@ -1,3 +1,4 @@
+from __future__ import print_function
 from scipy.io import mmread
 from scipy import sparse
 import gzip
@@ -49,7 +50,7 @@ def load_adj_mat(datafile_mmgz, make_binary = True):
     if make_binary:     # change edge weights to 1
         adj_mat = adj_mat.astype(bool, copy=False).astype(int, copy=False)
 
-    print "Read data: " + str(adj_mat.shape[0]) + " items, " + str(adj_mat.shape[1]) + " affiliations"
+    print("Read data: " + str(adj_mat.shape[0]) + " items, " + str(adj_mat.shape[1]) + " affiliations")
     return adj_mat.tocsc()
 
 
@@ -73,28 +74,28 @@ def learn_pi_vector(adj_mat):
 def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
     epsilon = .25 / adj_mat.shape[0]  # If learned from the data, p_i would be in increments of 1/nrows
     if expt1:
-        print "expt1: removing affils with degree 0 *or 1*"
+        print("expt1: removing affils with degree 0 *or 1*")
         affils_to_keep = np.logical_and(pi_vector >= epsilon + float(1)/adj_mat.shape[0],
                                         pi_vector <= 1 - epsilon - float(1)/adj_mat.shape[0])
     else:
         affils_to_keep = np.logical_and(pi_vector >= epsilon, pi_vector <= 1 - epsilon)
-    print "Keeping " + ("all " if (affils_to_keep.sum() == adj_mat.shape[0]) else "") \
-          + str(affils_to_keep.sum()) + " affils"
+    print("Keeping " + ("all " if (affils_to_keep.sum() == adj_mat.shape[0]) else "") \
+          + str(affils_to_keep.sum()) + " affils")
     which_nonzero = np.nonzero(affils_to_keep)      # returns a tuple (immutable list) holding 1 element: an ndarray of indices
     pi_vector_mod = pi_vector[which_nonzero]        # since pi_vector is also an ndarray, the slicing is happy to use a tuple
     adj_mat_mod = adj_mat[:, which_nonzero[0]]      # since adj_mat is a matrix, slicing needs just the ndarray
 
     cmpts_to_flip = pi_vector_mod > .5
     if flip_high_ps:
-        print "Flipping " + str(cmpts_to_flip.sum()) + " components that had p_i > .5"
-        print "(ok to ignore warning message produced)"
+        print("Flipping " + str(cmpts_to_flip.sum()) + " components that had p_i > .5")
+        print("(ok to ignore warning message produced)")
         which_nonzero = np.nonzero(cmpts_to_flip)
         pi_vector_mod[which_nonzero] = 1 - pi_vector_mod[which_nonzero]
         adj_mat_mod[:, which_nonzero[0]] = np.ones(adj_mat_mod[:, which_nonzero[0]].shape, dtype=adj_mat_mod.dtype) \
                                            - adj_mat_mod[:, which_nonzero[0]]
 
     else:
-        print "fyi: leaving in the " + str(cmpts_to_flip.sum()) + " components with p_i > .5"
+        print("fyi: leaving in the " + str(cmpts_to_flip.sum()) + " components with p_i > .5")
 
     return pi_vector_mod, adj_mat_mod.tocsr()
 
@@ -213,7 +214,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     evals['numAffils'] = adj_mat.shape[1]
 
     with open(evals_outfile, 'w') as fpout:
-        print "Saving results to " + evals_outfile
+        print("Saving results to " + evals_outfile)
         for (measure, val) in sorted(evals.iteritems()):
             fpout.write(measure + '\t' + str(val) + '\n')
 
@@ -267,7 +268,7 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
 # (todo? implement a way to specify param values for MixedPairs at command line)
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print "Usage: python score_data.py adj_matrix.mm.gz pair_scores_out.csv.gz method1 [method2 ...]"
+        print("Usage: python score_data.py adj_matrix.mm.gz pair_scores_out.csv.gz method1 [method2 ...]")
         exit(0)
 
     datafile_mmgz = sys.argv[1]

@@ -1,3 +1,4 @@
+from __future__ import print_function
 # Scoring functions for which I've found a faster implementation. Keeping these around for
 # clarity and in case I want them back.
 
@@ -209,7 +210,7 @@ def compute_scores_from_terms0(pairs_generator, adj_matrix, scores_bi_func, prin
 
     end = timer()
     if print_timing:
-        print scores_bi_func.__name__ + ": " + str(end - start) + " secs"
+        print(scores_bi_func.__name__ + ": " + str(end - start) + " secs")
     return scores
 
 ## Helpers to be called with compute_scores_from_terms or compute_scores_from_terms0  ##
@@ -239,7 +240,7 @@ def simple_only_phi_coeff(pairs_generator, adj_matrix, print_timing=False):
 
     end = timer()
     if print_timing:
-        print 'simple_only_phi_coeff: ' + str(end - start) + " secs"
+        print('simple_only_phi_coeff: ' + str(end - start) + " secs")
     return scores
 
 
@@ -257,7 +258,7 @@ def simple_only_weighted_corr(pairs_generator, adj_matrix, pi_vector, print_timi
 
     end = timer()
     if print_timing:
-        print 'simple_only_weighted_corr: ' + str(end - start) + " secs"
+        print('simple_only_weighted_corr: ' + str(end - start) + " secs")
     return pandas.DataFrame({'item1': item1, 'item2': item2, 'weighted_corr': wc})
 
 
@@ -279,5 +280,5 @@ def simple_weighted_corr_sparse(pairs_generator, adj_matrix, pi_vector, print_ti
 
     end = timer()
     if print_timing:
-        print 'simple_weighted_corr_sparse: ' + str(end - start) + " secs"
+        print('simple_weighted_corr_sparse: ' + str(end - start) + " secs")
     return wc

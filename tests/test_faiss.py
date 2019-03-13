@@ -1,3 +1,4 @@
+from __future__ import print_function
 # Scratch work from setting up and trying out faiss calls.
 
 import sys
@@ -25,13 +26,13 @@ def test_faiss_basic_calls():
     #index.add(np.random.random((100, adj_mat.shape[1])).astype('float32'))
     adj_for_faiss = adj_mat.toarray().astype('float32') # adj_mat is sparse, but faiss wants dense. and, apparently, wants float32.
     index.add(adj_for_faiss)
-    print "index.is_trained: " + str(index.is_trained) + ", index.total: " + str(index.ntotal)
+    print("index.is_trained: " + str(index.is_trained) + ", index.total: " + str(index.ntotal))
 
     # look at 10 nearest neighbors of each input
     distances10, neighbors10 = index.search(adj_for_faiss, 10)
 
     distances, neighbors = index.search(adj_for_faiss, adj_for_faiss.shape[0])  # all pairs
-    print 'basic calls ran'
+    print('basic calls ran')
 
 
 def test_score_wc_faiss():
@@ -42,20 +43,20 @@ def test_score_wc_faiss():
 
     scores_data_frame = scoring_with_faiss.score_pairs_faiss(adj_mat, which_methods=['weighted_corr_faiss'], how_many_neighbors=-1, print_timing=True,
                       pi_vector=pi_vector)
-    print 'scores look like (sample):\n' + str(scores_data_frame.head())
+    print('scores look like (sample):\n' + str(scores_data_frame.head()))
     # note for later: scores_data_frame.reset_index() makes it save item1 & item2 as regular columns, defaults back to index of row numbers
 
-    print "calling adamic-adar"
+    print("calling adamic-adar")
     scores_data_frame2 = scoring_with_faiss.score_pairs_faiss_all_exact(adj_mat, 'adamic_adar_faiss',
                                                    pi_vector=pi_vector, num_docs=adj_mat.shape[0])
-    print 'scores look like (sample):\n' + str(scores_data_frame2.head())
+    print('scores look like (sample):\n' + str(scores_data_frame2.head()))
 
-    print "calling pearson"
+    print("calling pearson")
     scores_data_frame2 = scoring_with_faiss.score_pairs_faiss_all_exact(adj_mat, 'pearson_faiss')
-    print 'scores look like (sample):\n' + str(scores_data_frame2.head())
-    print "(dense input)"
+    print('scores look like (sample):\n' + str(scores_data_frame2.head()))
+    print("(dense input)")
     scores_data_frame2 = scoring_with_faiss.score_pairs_faiss_all_exact(adj_mat.toarray(), 'pearson_faiss')
-    print 'scores look like (sample):\n' + str(scores_data_frame2.head())
+    print('scores look like (sample):\n' + str(scores_data_frame2.head()))
 
 
 # (caution: 'weighted_corr_faiss' may not work as a method name going forward)
@@ -90,7 +91,7 @@ def resources_test(run_all_implementations=True):
         methods_to_run = ['weighted_corr', 'weighted_corr_faiss']
 
         adj_mat_preproc_dense = adj_mat_preproc.toarray()
-        print "\ndense version takes up " + str(sys.getsizeof(adj_mat_preproc_dense)) + " bytes"
+        print("\ndense version takes up " + str(sys.getsizeof(adj_mat_preproc_dense)) + " bytes")
 
         start = timer()
         # scores_faiss = scoring_with_faiss.score_pairs_faiss(adj_mat, methods_to_run, print_timing=True,
@@ -103,9 +104,9 @@ def resources_test(run_all_implementations=True):
                                                                    mixed_pairs_sims=[.01],
                                                                    print_timing=True)
         end = timer()
-        print "for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
-            + " affils, "
-        print "ran all methods using dense matrix in " + str(end - start) + " seconds"
+        print("for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
+            + " affils, ")
+        print("ran all methods using dense matrix in " + str(end - start) + " seconds")
 
 
 def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_outfile=None):
@@ -115,8 +116,8 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
     for num_to_try in num_nodes:
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
-        print "\n*** Running all faiss methods ***\n"
-        print "(asked for " + str(num_to_try) + " nodes)"
+        print("\n*** Running all faiss methods ***\n")
+        print("(asked for " + str(num_to_try) + " nodes)")
         # adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
         # turns out fitting the exponential model is a first bottleneck <- not any more!
@@ -131,9 +132,9 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
                                 pair_scores_outfile=scored_pairs_outfile,
                                 print_timing=True)
         end = timer()
-        print "ran all " + str(len(methods_to_run)) + " methods in " + str(end - start) + " seconds"
+        print("ran all " + str(len(methods_to_run)) + " methods in " + str(end - start) + " seconds")
 
-        print "Now running normal versions for comparison"
+        print("Now running normal versions for comparison")
         normal_versions = [x[:-6] for x in methods_to_run]
         start = timer()
         score_data.run_and_eval(adj_mat,
@@ -143,7 +144,7 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
                                 pair_scores_outfile=scored_pairs_outfile,
                                 print_timing=True, make_dense=True)
         end = timer()
-        print "ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds"
+        print("ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds")
 
 
 def test_all_faiss_methods(adj_mat_infile, evals_outfile, scored_pairs_outfile=None):
@@ -153,7 +154,7 @@ def test_all_faiss_methods(adj_mat_infile, evals_outfile, scored_pairs_outfile=N
     for num_to_try in num_nodes:
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
-    print "\n*** Running all faiss methods ***\n"
+    print("\n*** Running all faiss methods ***\n")
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
     start = timer()
@@ -164,9 +165,9 @@ def test_all_faiss_methods(adj_mat_infile, evals_outfile, scored_pairs_outfile=N
                             pair_scores_outfile=scored_pairs_outfile,
                             print_timing=True)
     end = timer()
-    print "ran all " + str(len(scoring_with_faiss.all_faiss_methods)) + " methods in " + str(end - start) + " seconds"
+    print("ran all " + str(len(scoring_with_faiss.all_faiss_methods)) + " methods in " + str(end - start) + " seconds")
 
-    print "Now running normal versions for comparison"
+    print("Now running normal versions for comparison")
     normal_versions = [x[:-6] for x in scoring_with_faiss.all_faiss_methods]
     start = timer()
     score_data.run_and_eval(adj_mat,
@@ -176,7 +177,7 @@ def test_all_faiss_methods(adj_mat_infile, evals_outfile, scored_pairs_outfile=N
                             pair_scores_outfile=scored_pairs_outfile,
                             print_timing=True, make_dense=True)
     end = timer()
-    print "ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds"
+    print("ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds")
 
 
 

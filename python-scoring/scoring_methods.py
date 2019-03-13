@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 import pandas
 from scipy import sparse
@@ -159,7 +160,7 @@ def item_ids(pairs_generator):
 
 def separate_faiss_methods(which_methods, faiss_preferred, is_sparse):
     if is_sparse:
-        print "Can't use FAISS, because adjacency matrix was provided as sparse"
+        print("Can't use FAISS, because adjacency matrix was provided as sparse")
         return which_methods, []
 
     methods_for_faiss = set(x for x in which_methods if x[-6:] == '_faiss')  # honor the label
@@ -168,9 +169,9 @@ def separate_faiss_methods(which_methods, faiss_preferred, is_sparse):
         faiss_avail = True
     except ImportError:
         faiss_avail = False
-        print "FAISS not installed"
+        print("FAISS not installed")
         if len(methods_for_faiss):
-            print "skipping methods " + str(methods_for_faiss)
+            print("skipping methods " + str(methods_for_faiss))
 
     our_methods_in_faiss = methods_for_faiss.copy()  # ours: what to remove from our list.
     if faiss_preferred and faiss_avail:
@@ -179,7 +180,7 @@ def separate_faiss_methods(which_methods, faiss_preferred, is_sparse):
                 methods_for_faiss.add(method + '_faiss')
                 our_methods_in_faiss.add(method)
     if len(our_methods_in_faiss) > 0:
-        print "Using FAISS for: " + str(list(our_methods_in_faiss))
+        print("Using FAISS for: " + str(list(our_methods_in_faiss)))
     which_methods = set(which_methods) - our_methods_in_faiss
     return which_methods, methods_for_faiss
 
@@ -194,7 +195,7 @@ def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, prin
         scores.append(pair_x.dot(pair_y))
     end = timer()
     if print_timing:
-        print transf_func.__name__ + ": " + str(end - start) + " secs"
+        print(transf_func.__name__ + ": " + str(end - start) + " secs")
     return scores
 
 
@@ -207,7 +208,7 @@ def compute_scores_orig(pairs_generator, sim_func, print_timing=False, **named_a
 
     end = timer()
     if print_timing:
-        print "original " + sim_func.__name__ + ": " + str(end - start) + " secs"
+        print("original " + sim_func.__name__ + ": " + str(end - start) + " secs")
 
     return scores
 
@@ -242,7 +243,7 @@ def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, print_timi
 
     end = timer()
     if print_timing:
-        print "simple_only_wc_exp_scores: " + str(end - start) + " secs"
+        print("simple_only_wc_exp_scores: " + str(end - start) + " secs")
     return scores
 
 
@@ -266,7 +267,7 @@ def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, print
 
     end = timer()
     if print_timing:
-        print scores_bi_func.__name__ + ": " + str(end - start) + " secs"
+        print(scores_bi_func.__name__ + ": " + str(end - start) + " secs")
     return scores
 
 
@@ -289,7 +290,7 @@ def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func,
 
     end = timer()
     if print_timing:
-        print "dense " + scores_bi_func.__name__ + ": " + str(end - start) + " secs"
+        print("dense " + scores_bi_func.__name__ + ": " + str(end - start) + " secs")
     return scores
 
 

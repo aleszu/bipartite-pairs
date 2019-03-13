@@ -1,3 +1,4 @@
+from __future__ import print_function
 from timeit import default_timer as timer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
@@ -35,7 +36,7 @@ def simple_only_cosine(pairs_generator, adj_matrix, weights=None, print_timing=F
 
     end = timer()
     if print_timing:
-        print 'simple_only_cosine: ' + str(end - start) + " secs"
+        print('simple_only_cosine: ' + str(end - start) + " secs")
     return cos
 
 
@@ -60,7 +61,7 @@ def simple_only_pearson(pairs_generator, adj_matrix, print_timing=False):
 
     end = timer()
     if print_timing:
-        print 'simple_only_pearson: ' + str(end - start) + " secs"
+        print('simple_only_pearson: ' + str(end - start) + " secs")
     return scores
 
 

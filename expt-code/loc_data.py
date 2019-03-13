@@ -1,3 +1,4 @@
+from __future__ import print_function
 from scipy import sparse
 import random
 import score_data
@@ -54,7 +55,7 @@ def read_sample_save(adj_mat_infile, edges_infile, num_nodes, rows_outfile):
     # challenge: adj_mat_to_keep doesn't remember the old/semantically meaningful row labels. Need to keep these around
     # to send to the pair generators.
 
-    print "Sampled " + str(num_nodes) + " nodes"
+    print("Sampled " + str(num_nodes) + " nodes")
     with open(rows_outfile, 'wt') as fp:
         fp.write(" ".join(map(str, sorted(row_ids_to_keep))))   # probably need better syntax
 
@@ -98,7 +99,7 @@ def get_label_generator_from_edgefile(edges_infile, ids_to_keep, tot_num_orig_ro
                     edge_matrix[item2, item1] = 1
                     num_edges += 1
 
-    print "Found " + str(num_edges) + " edges for the rows"
+    print("Found " + str(num_edges) + " edges for the rows")
     if num_edges == 0:
         return None
 
@@ -136,7 +137,7 @@ def run_expts_loc_data(loc_data_name='brightkite', existing_data=False, inferenc
             adj_mat, row_labels, label_generator = read_sample_save(adj_mat_infile, edges_infile, num_nodes=500, rows_outfile=rowIDs_file)
 
         if label_generator is None:
-            print "Found no edges; stopping"
+            print("Found no edges; stopping")
 
         else:
             score_data.run_and_eval(adj_mat, true_labels_func = label_generator, method_spec="all",

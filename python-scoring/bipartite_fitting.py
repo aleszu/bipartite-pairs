@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 import bipartite_likelihood
 import numpy as np
@@ -59,14 +60,14 @@ def learn_exponential_model(adj_matrix, use_intercept=True, use_item_params=True
         X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
 
     t2 = time.time()
-    print 'Feature matrix constructed in {} seconds.'.format(round(t2 - t1), 2)
+    print('Feature matrix constructed in {} seconds.'.format(round(t2 - t1), 2))
     t1 = time.time()
 
     # C is 1/regularization param. Set it high to effectively turn off regularization.
     # other param options: max_iter, solver, random_state (seed)
     log_reg_model = LogisticRegression(fit_intercept=use_intercept, C=1e15, solver='lbfgs').fit(X_feat, Y_lab)
     t2 = time.time()
-    print 'Model learned in {} seconds.'.format(round(t2 - t1), 2) + " (" + str(log_reg_model.n_iter_[0]) + " iterations)"
+    print('Model learned in {} seconds.'.format(round(t2 - t1), 2) + " (" + str(log_reg_model.n_iter_[0]) + " iterations)")
 
     # for fun & sanity checking, get its predictions back out
     if withLL:
@@ -187,7 +188,7 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False):
         change = max(np.max(np.abs(pdeg_X - new_pdeg_x)), np.max(np.abs(pdeg_Y - new_pdeg_y)))
 
         if counter % 500 == 0:
-            print 'counter=%d, change=%f' % (counter, change)
+            print('counter=%d, change=%f' % (counter, change))
 
         pdeg_X[:] = new_pdeg_x
         pdeg_Y[:] = new_pdeg_y
@@ -195,13 +196,13 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False):
             break
 
     t2 = time.time()
-    print 'Solver done in {} seconds.'.format(round(t2 - t1), 2)
+    print('Solver done in {} seconds.'.format(round(t2 - t1), 2))
 
     if change > tolerance:
-        print "Warning: Solver did not converge. Returned first-order solution instead."
+        print("Warning: Solver did not converge. Returned first-order solution instead.")
         return X_bak, Y_bak, None, None
 
-    print "Solver converged in {} iterations.".format(counter)
+    print("Solver converged in {} iterations.".format(counter))
 
     # convert back from deg_X (short) to X (longer)
     X = np.zeros(len(fs))

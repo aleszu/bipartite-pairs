@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 from scipy import sparse
 import numpy as np
@@ -37,15 +38,15 @@ class bipartiteGraphModel:
 
     def print_params(self):
         if self.has_density_param:
-            print "model intercept: " + str(round(self.density_param, 5))
+            print("model intercept: " + str(round(self.density_param, 5)))
         if self.has_item_params:
-            print "item params: min " + str(round(np.min(self.item_params), 5)) + ", median " + \
+            print("item params: min " + str(round(np.min(self.item_params), 5)) + ", median " + \
                   str(round(np.median(self.item_params), 5)) + ", max " + str(
-                round(np.max(self.item_params), 5))
+                round(np.max(self.item_params), 5)))
         if self.has_affil_params:
-            print "affil params: min " + str(round(np.min(self.affil_params), 5)) + ", median " + \
+            print("affil params: min " + str(round(np.min(self.affil_params), 5)) + ", median " + \
                   str(round(np.median(self.affil_params), 5)) + ", max " + str(
-                round(np.max(self.affil_params), 5))
+                round(np.max(self.affil_params), 5)))
 
     # lower is better!
     def akaike(self, adj_matrix):
