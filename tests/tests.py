@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import zip, str
 import sys
 sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
 sys.path.append("../expt-code")
@@ -142,7 +143,7 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
     with gzip.open(scored_pairs_file_R, 'r') as fpin:
         scores_data_frame_R = pd.read_csv(fpin)
 
-    for (R_method, our_method) in mapping_from_R_methods.iteritems():
+    for (R_method, our_method) in mapping_from_R_methods.items():
         if our_method in list(scores_data_frame):
             print("Checking " + our_method)
             # R data doesn't have item numbers, but is in the same all-pairs order as ours

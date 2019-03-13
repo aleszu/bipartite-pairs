@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import map, str, range
 from scipy.io import mmread
 from scipy import sparse
 import gzip
@@ -189,7 +190,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     #     scores_data_frame = pd.merge(scores_subset, scores_data_frame, on=['item1', 'item2'])
 
     method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
-    scores_data_frame['label'] = map(int, true_labels_func(pairs_generator(adj_mat)))
+    scores_data_frame['label'] = list(map(int, true_labels_func(pairs_generator(adj_mat))))
 
     # round pair scores at 15th decimal place so we don't get spurious diffs in AUCs when replicating
     scores_data_frame = scores_data_frame.round(decimals={method:15 for method in method_names})
@@ -215,7 +216,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
     with open(evals_outfile, 'w') as fpout:
         print("Saving results to " + evals_outfile)
-        for (measure, val) in sorted(evals.iteritems()):
+        for (measure, val) in sorted(evals.items()):
             fpout.write(measure + '\t' + str(val) + '\n')
 
 

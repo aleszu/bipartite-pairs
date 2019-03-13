@@ -2,6 +2,7 @@ from __future__ import print_function
 # Scoring functions for which I've found a faster implementation. Keeping these around for
 # clarity and in case I want them back.
 
+from builtins import str
 import numpy as np
 from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr

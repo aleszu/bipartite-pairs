@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import str
 import sys
 sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
 sys.path.append("../expt-code")

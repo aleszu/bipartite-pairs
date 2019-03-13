@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import str, map, range
 from scipy import sparse
 import random
 import score_data
@@ -48,7 +49,7 @@ def read_loc_adj_mat(infile, max_rows= None):
 def read_sample_save(adj_mat_infile, edges_infile, num_nodes, rows_outfile):
     adj_mat, row_labels = read_loc_adj_mat(adj_mat_infile)
 
-    row_ids_to_keep = set(random.sample(range(adj_mat.shape[0]), num_nodes))
+    row_ids_to_keep = set(random.sample(list(range(adj_mat.shape[0])), num_nodes))
     adj_mat_to_keep = adj_mat[sorted(row_ids_to_keep),]
     row_labels_to_keep = [row_labels[i] for i in sorted(row_ids_to_keep)]  # oddly, subset notation above doesn't work
 
@@ -90,7 +91,7 @@ def get_label_generator_from_edgefile(edges_infile, ids_to_keep, tot_num_orig_ro
     num_edges = 0
     with open(edges_infile, 'r') as fpin:
         for line in fpin:
-            item1, item2 = map(int, line.split())
+            item1, item2 = list(map(int, line.split()))
 
             if item1 in ids_to_keep and item2 in ids_to_keep:
                 # make matrix symmetric by storing each entry in both directions

@@ -1,10 +1,10 @@
 from __future__ import print_function
+from builtins import str
 import timeit
 from timeit import default_timer as timer
 from pympler import asizeof
 import sys
 
-import bipartite_fitting
 import score_data
 import loc_data
 

@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import str, range
 import faiss
 import numpy as np
 import pandas
@@ -104,12 +105,12 @@ def score_pairs_faiss(adj_matrix, which_methods, how_many_neighbors=-1, print_ti
                     scores_array[cnt] = [i, j] + [res_mat[i,j] for res_mat in scores.values()]
                     cnt += 1
 
-            return pandas.DataFrame(scores_array, columns = ['item1', 'item2'] + scores.keys())
+            return pandas.DataFrame(scores_array, columns = ['item1', 'item2'] + list(scores.keys()))
 
         else:
             # convert distance matrices to a single data frame with pairs + scores as columns (some scores will be blank)
             # (note: making dok_mat was probably unnecessary b/c just using it as a dict)
-            scores_frame = pandas.DataFrame( {method:pandas.Series(dict(dok_mat.items()))
+            scores_frame = pandas.DataFrame( {method:pandas.Series(dict(list(dok_mat.items())))
                                               for (method, dok_mat) in scores.items()} )
             return scores_frame.rename_axis(index=['item1', 'item2']).reset_index()
     else:
@@ -171,7 +172,7 @@ def compute_faiss_dotprod_distances(adj_matrix, transf_func, how_many_neighbors,
 
     else:  # get all distances immediately from faiss
         tot_nodes = transformed_mat.shape[0]
-        labels = np.array([range(tot_nodes) for i in range(tot_nodes)]) # n rows of 0..n
+        labels = np.array([list(range(tot_nodes)) for i in range(tot_nodes)]) # n rows of 0..n
         dists_matrix = np.empty((tot_nodes, tot_nodes), dtype='float32')
         faiss_index.compute_distance_subset(tot_nodes, faiss.swig_ptr(transformed_mat), tot_nodes,
                                       faiss.swig_ptr(dists_matrix), faiss.swig_ptr(labels))

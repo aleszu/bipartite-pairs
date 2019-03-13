@@ -1,5 +1,5 @@
 from __future__ import print_function
-
+from builtins import str, range
 import bipartite_likelihood
 import numpy as np
 import time
@@ -36,7 +36,7 @@ def learn_exponential_model(adj_matrix, use_intercept=True, use_item_params=True
     if use_item_params:
         indices_items = np.concatenate([np.full(shape=adj_matrix.shape[1], fill_value=x) for x in range(adj_matrix.shape[0])])
     if use_affil_params:
-        indices_affils = range(adj_matrix.shape[0], adj_matrix.shape[0] + adj_matrix.shape[1]) * adj_matrix.shape[0]
+        indices_affils = list(range(adj_matrix.shape[0], adj_matrix.shape[0] + adj_matrix.shape[1])) * adj_matrix.shape[0]
 
     if use_item_params and use_affil_params:
         # X_feat will have 2 entries per row. Num rows = np.product(adj_matrix.shape).

@@ -1,15 +1,13 @@
 from __future__ import print_function
-
+from builtins import str, range, object
 from scipy import sparse
 import numpy as np
 from abc import ABCMeta, abstractmethod  # enables abstract base classes
+from future.utils import with_metaclass
 
 # use: my_model.akaike(adj_matrix)
 
-class bipartiteGraphModel:
-    __metaclass__ = ABCMeta
-
-    # always use set_*_params() methods so we can keep track of num_params
+class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
     has_affil_params = False
     has_item_params = False
     has_density_param = False

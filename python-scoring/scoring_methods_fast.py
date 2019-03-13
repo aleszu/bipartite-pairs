@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import str
 from timeit import default_timer as timer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity

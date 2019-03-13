@@ -1,6 +1,7 @@
 from __future__ import print_function
 # Scratch work from setting up and trying out faiss calls.
 
+from builtins import str
 import sys
 sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
 sys.path.append("../expt-code")
