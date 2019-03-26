@@ -6,6 +6,7 @@ import gzip
 from sklearn.metrics import roc_auc_score
 import sys
 import numpy as np
+
 import scoring_methods
 import bipartite_fitting
 import bipartite_likelihood
@@ -49,7 +50,7 @@ def load_adj_mat(datafile_mmgz, make_binary = True):
     with gzip.open(datafile_mmgz, 'r') as fp_mm:
         adj_mat = mmread(fp_mm).astype(int, copy=False)  # creates a scipy.sparse.coo_matrix, if matrix was sparse
     if make_binary:     # change edge weights to 1
-        adj_mat = adj_mat.astype(bool, copy=False).astype(int, copy=False)
+        adj_mat = adj_mat.astype(bool, copy=False).astype('int8', copy=False)
 
     print("Read data: " + str(adj_mat.shape[0]) + " items, " + str(adj_mat.shape[1]) + " affiliations")
     return adj_mat.tocsc()
@@ -207,8 +208,9 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
         evals["auc_" + method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
 
     for model_type, graph_model in graph_models.items():
-        evals["loglikelihood_" + model_type] = graph_model.loglikelihood(adj_mat)
-        evals["akaike_" + model_type] = graph_model.akaike(adj_mat)
+        (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat)
+        evals["loglikelihood_" + model_type] = loglik
+        evals["akaike_" + model_type] = aic
 
     evals['constructAllPairsFromMDocs'] = adj_mat.shape[0]      # only correct when we're using all pairs
     evals['numPositives'] = scores_data_frame['label'].sum()
@@ -235,8 +237,9 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
     graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
 
     for model_type, graph_model in graph_models.items():
-        print("loglikelihood " + model_type + ": " + str(graph_model.loglikelihood(adj_mat)))
-        print("akaike " + model_type + ": " + str(graph_model.akaike(adj_mat)))
+        (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat)
+        print("loglikelihood " + model_type + ": " + str(loglik))
+        print("akaike " + model_type + ": " + str(aic))
 
     # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
     # scores_subset =
@@ -264,9 +267,26 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
     print('scored pairs saved to ' + pair_scores_outfile)
 
 
-# __main__ function should take: infile (adj_matrix.mm.gz), outfile (edge scores), methods (space-separated list of
-# scoring methods to run)
-# (todo? implement a way to specify param values for MixedPairs at command line)
+# Utility function: doesn't look at pairs, simply fits a model to the graph and prints the log likelihoods for each
+# item. Runs both Bernoulli and exponential models.
+def item_likelihoods(adj_mat_file, loglik_out_csv, flip_high_ps=False):
+    adj_mat = load_adj_mat(adj_mat_file)
+    pi_vector = learn_pi_vector(adj_mat)
+    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)
+
+    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=True)
+
+    (loglik_bern, aic_bern, item_LLs_bern) = graph_models['bernoulli'].likelihoods(adj_mat)
+    (loglik_exp, aic_exp, item_LLs_exp) = graph_models['exponential'].likelihoods(adj_mat)
+    print("bernoulli model: loglikelihood " + str(loglik_bern) + ", aic " + str(aic_bern))
+    print("exponential model: loglikelihood " + str(loglik_exp) + ", aic " + str(aic_exp))
+
+    with open(loglik_out_csv, 'w') as fout:
+        fout.write("item,loglik_bernoulli,loglik_exponential\n")
+        for i, score in enumerate(item_LLs_bern):
+            fout.write(str(i) + ',' + str(item_LLs_bern[i]) + "," + str(item_LLs_exp[i]) + "\n")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: python score_data.py adj_matrix.mm.gz pair_scores_out.csv.gz method1 [method2 ...]")
@@ -275,20 +295,6 @@ if __name__ == "__main__":
     datafile_mmgz = sys.argv[1]
     edge_scores_outfile = sys.argv[2]
     methods = [x for x in sys.argv[2:]]
-    # if 'all' in methods:   # moved into score_pairs
-    #     methods = scoring_methods.all_defined_methods
 
-    # infile --> adj matrix
-    adj_mat = load_adj_mat(datafile_mmgz)
+    score_only(datafile_mmgz, methods, edge_scores_outfile)
 
-    # learn phi
-    pi_vector = learn_pi_vector(adj_mat)
-    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat)
-
-    # score pairs
-    scores_data_frame = scoring_methods.score_pairs(gen_all_pairs, adj_mat, methods, pi_vector=pi_vector)
-
-    # save results
-    method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
-    scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2'] + sorted(method_names), copy=False)
-    scores_data_frame.to_csv(edge_scores_outfile, index=False, compression="gzip")

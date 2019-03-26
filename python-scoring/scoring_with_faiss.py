@@ -98,7 +98,7 @@ def score_pairs_faiss(adj_matrix, which_methods, how_many_neighbors=-1, print_ti
     if len(scores):
         if how_many_neighbors == -1:
             # iterate through all pairs --> array
-            scores_array = np.empty((adj_matrix.shape[0] * (adj_matrix.shape[0]-1)/2, 2 + len(scores)), dtype=np.float32)
+            scores_array = np.empty((int(adj_matrix.shape[0] * (adj_matrix.shape[0]-1)/2), 2 + len(scores)), dtype=np.float32)
             cnt = 0
             for i in range(adj_matrix.shape[0]):
                 for j in range(i+1, adj_matrix.shape[0]):

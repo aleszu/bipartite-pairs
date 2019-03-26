@@ -1,8 +1,10 @@
 from __future__ import print_function
 from builtins import str, map, range
 from scipy import sparse
+import numpy as np
 import random
 import score_data
+
 
 
 # Returns: sparse adjacency matrix, array storing affil name for each column
@@ -39,7 +41,7 @@ def read_loc_adj_mat(infile, max_rows= None):
                 coord_row.append(row_num)
                 coord_col.append(affil_num)
 
-    matrix = sparse.csc_matrix(([1] * len(coord_row), (coord_row, coord_col)))
+    matrix = sparse.csc_matrix(([1] * len(coord_row), (coord_row, coord_col)), dtype=np.int8)
     return matrix, row_labels
 
 
@@ -87,7 +89,7 @@ def get_loc_expt_data(adj_mat_infile, edges_infile, row_ids_infile):
 # b/c we won't possibly have sampled those nodes.)
 def get_label_generator_from_edgefile(edges_infile, ids_to_keep, tot_num_orig_rows):
 
-    edge_matrix = sparse.csc_matrix((tot_num_orig_rows, tot_num_orig_rows))
+    edge_matrix = sparse.csc_matrix((tot_num_orig_rows, tot_num_orig_rows), dtype=np.int8)
     num_edges = 0
     with open(edges_infile, 'r') as fpin:
         for line in fpin:

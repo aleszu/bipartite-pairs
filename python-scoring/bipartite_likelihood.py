@@ -46,12 +46,6 @@ class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
                   str(round(np.median(self.affil_params), 5)) + ", max " + str(
                 round(np.max(self.affil_params), 5)))
 
-    # lower is better!
-    def akaike(self, adj_matrix):
-        loglik = self.loglikelihood(adj_matrix)
-        aic = 2 * (self.get_num_params() - loglik)
-        return aic
-
     # returns vector of log(P(edge_ij)) for item i
     @abstractmethod
     def loglik_edges_present(self, item_idx):
@@ -61,11 +55,14 @@ class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
     def loglik_edges_absent(self, item_idx):
         pass
 
-    # higher is better!
-    def loglikelihood(self, my_adj_mat):
-        tot_score = 0
-        # code borrowed from gen_all_pairs, to handle adj_matrices of different classes
+
+    # For efficiency, have a single function compute and return indiv item log likelihoods, total data
+    # log likelihood (higher is better fit), and akaike (lower is better fit)
+    def likelihoods(self, my_adj_mat):
         num_rows = my_adj_mat.shape[0]
+        item_LLs = np.zeros(num_rows)
+        loglik = 0
+        # code borrowed from gen_all_pairs, to handle adj_matrices of different classes
         is_sparse = sparse.isspmatrix(my_adj_mat)
         is_numpy_matrix = (type(my_adj_mat) == np.matrix)
         for i in range(num_rows):
@@ -78,8 +75,19 @@ class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
 
             # compute scores for edges that are present and absent, respectively
             score = rowi.dot(self.loglik_edges_present(i)) + (1 - rowi).dot(self.loglik_edges_absent(i))
-            tot_score += score
-        return tot_score
+            loglik += score
+            item_LLs[i] = score
+
+        aic = 2 * (self.get_num_params() - loglik)
+        return (loglik, aic, item_LLs)
+
+    # higher is better!
+    def loglikelihood(self, my_adj_mat):
+        return self.likelihoods(my_adj_mat)[0]
+
+    # lower is better!
+    def akaike(self, adj_matrix):
+        return self.likelihoods(adj_matrix)[1]
 
 
 

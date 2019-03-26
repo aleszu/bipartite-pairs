@@ -4,9 +4,11 @@ import numpy as np
 import pandas
 from scipy import sparse
 from timeit import default_timer as timer
+#from pympler import asizeof
 import scoring_methods_fast
 import extra_implementations
 import transforms_for_dot_prods
+
 
 
 all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson',
@@ -52,12 +54,14 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
     if 'cosine' in which_methods:
         scores['cosine'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix,
-                                                                   print_timing=print_timing, use_package=True)
+                                                                   print_timing=print_timing, use_package=True,
+                                                                   use_batches=True)
 
     if 'cosineIDF' in which_methods:
         idf_weights = np.log(1/all_named_args['pi_vector'])
         scores['cosineIDF'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, weights=idf_weights,
-                                                                      print_timing=print_timing, use_package=True)
+                                                                      print_timing=print_timing, use_package=True,
+                                                                      use_batches=True)
 
     if 'shared_size' in which_methods:
         scores['shared_size'] = compute_scores_with_transform(pairs_generator, adj_matrix,
@@ -153,7 +157,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
 
 def item_ids(pairs_generator):
     item1, item2 = [], []
-    for (_, _, item1_id, item2_id, pair_x, pair_y) in pairs_generator:
+    for (_, _, item1_id, item2_id, _, _) in pairs_generator:
         item1.append(item1_id)
         item2.append(item2_id)
     return(item1, item2)
@@ -176,8 +180,10 @@ def separate_faiss_methods(which_methods, faiss_preferred, is_sparse):
 
     our_methods_in_faiss = methods_for_faiss.copy()  # ours: what to remove from our list.
     if faiss_preferred and faiss_avail:
+        # note: my cosine method for faiss isn't scaling as well as sklearn's. Only use it if explicitly asked.
+        faiss_preferred_methods = set(scoring_with_faiss.all_faiss_methods) - set(('cosine_faiss', 'cosineIDF_faiss'))
         for method in which_methods:
-            if method + '_faiss' in scoring_with_faiss.all_faiss_methods:
+            if method + '_faiss' in faiss_preferred_methods:
                 methods_for_faiss.add(method + '_faiss')
                 our_methods_in_faiss.add(method)
     if len(our_methods_in_faiss) > 0:

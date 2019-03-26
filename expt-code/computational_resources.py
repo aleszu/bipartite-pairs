@@ -2,14 +2,21 @@ from __future__ import print_function
 from builtins import str
 import timeit
 from timeit import default_timer as timer
-from pympler import asizeof
+from pympler import asizeof, muppy, summary, tracker
 import sys
+import psutil
+import os
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy import sparse
+import numpy as np
 
 import score_data
 import loc_data
+import scoring_methods_fast
+import scoring_with_faiss
 
 
-def resources_test(run_all_implementations=True):
+def resources_test(run_all_implementations=True, use_faiss = False):
     # Let's read in portions of a big matrix in increasing size, and for each size, score all pairs (both sparse and dense).
     # This will let us see how things scale and where memory limits will come in.
     infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
@@ -52,7 +59,8 @@ def resources_test(run_all_implementations=True):
                                                mixed_pairs_sims=[.01],
                                                print_timing=True,
                                                exp_model=graph_models.get('exponential', None),
-                                               run_all_implementations=run_all_implementations)
+                                               run_all_implementations=run_all_implementations,
+                                               prefer_faiss=use_faiss)
         end = timer()
         print("for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
               + " affils, ")
@@ -73,6 +81,71 @@ def resources_test(run_all_implementations=True):
         print("for matrix with " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
               + " affils, ")
         print("ran all methods using sparse matrix in " + str(end - start) + " seconds")
+
+
+def test_cosine_versions():
+    infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
+
+    num_nodes = (100, 500, 1000, 5000)
+    num_nodes = [1000, 2000]
+    for num_to_try in num_nodes:
+        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+
+        pi_vector_learned = score_data.learn_pi_vector(adj_mat)
+        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+        print("\nmatrix has " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
+              + " affils ")
+        print("process memory: ")
+        print(get_process_memory())
+
+        print("\n** sklearn sparse cosine **")
+        scoring_methods_fast.simple_only_cosine(score_data.gen_all_pairs, adj_mat_preproc,
+                                                print_timing=True, use_package=True)
+        print(get_process_memory())
+
+        print("\n** sklearn, but called on sparse.csc of dense 'transformed' matrix **")
+        start = timer()
+        cos = []
+        all_pairs_scores = cosine_similarity(sparse.csr_matrix(adj_mat_preproc))
+        for (row_idx1, row_idx2, _, _, _, _) in score_data.gen_all_pairs(adj_mat_preproc):
+            score = all_pairs_scores[row_idx1, row_idx2]
+            cos.append(score if not np.isnan(score) else 0)
+        end = timer()
+        print("duration: " + str(end - start) + " seconds")
+        print(get_process_memory())
+
+        adj_mat_preproc_dense = adj_mat_preproc.toarray()
+        print("\nmade matrix dense")
+        print(get_process_memory())
+
+        print("\n** home-grown dense cosine **")
+        scoring_methods_fast.simple_only_cosine(score_data.gen_all_pairs, adj_mat_preproc_dense,
+                                                print_timing=True, use_package=False)
+        print(get_process_memory())
+
+        print("\n** sklearn dense, using batches **")
+        start = timer()
+        cos = []
+        all_pairs_scores = scoring_methods_fast.cosine_similarity_n_space(adj_mat_preproc_dense, adj_mat_preproc_dense,
+                                                                          verbose=True)
+        for (row_idx1, row_idx2, _, _, _, _) in score_data.gen_all_pairs(adj_mat_preproc_dense):
+            score = all_pairs_scores[row_idx1, row_idx2]
+            cos.append(score if not np.isnan(score) else 0)
+        end = timer()
+        print("duration: " + str(end - start) + " seconds")
+        print(get_process_memory())
+
+        print("\n** faiss (dense) ** ")
+        scoring_with_faiss.score_pairs_faiss_all_exact(adj_mat_preproc_dense, ['cosine_faiss'], print_timing=True)
+        print(get_process_memory())
+
+        print("\n** sklearn dense cosine **")
+        adj_mat_preproc_dense = adj_mat_preproc.toarray()
+        scoring_methods_fast.simple_only_cosine(score_data.gen_all_pairs, adj_mat_preproc_dense,
+                                                print_timing=True, use_package=True)
+        print(get_process_memory())
+
+
 
 
 # To nail down which versions of a few methods are fastest
@@ -163,7 +236,17 @@ scoring_methods_fast.simple_only_adamic_adar_scores(score_data.gen_all_pairs, ad
     # simple_only_pearson was a bit faster
 
 
+
+def get_process_memory():
+    process = psutil.Process(os.getpid())
+    mi = process.memory_info()
+    return mi.rss, mi.vms
+
+
+
 if __name__ == "__main__":
-    resources_test(run_all_implementations=False)
+    # test_cosine_versions()
+    # resources_test(run_all_implementations=False)
+    resources_test(run_all_implementations=False, use_faiss=True)
     # test_timings("../tests/ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz")
     # test_timings("../tests/reality_appweek_50/data50_adjMat.mtx.gz")
