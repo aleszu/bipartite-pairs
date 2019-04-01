@@ -100,8 +100,8 @@ def test_adj_and_phi2():
     assert(max(abs(pi_vector_preproc - pi_vector_preproc_R)) < 1e-07)
 
 
-def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=False, flip_high_ps=False, run_all=0,
-                               prefer_faiss=False):
+def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs_file_new, make_dense=False,
+                               flip_high_ps=False, run_all=0, prefer_faiss=False):
     """
     Starting from an adj matrix, score pairs (using current implementation) and compare to reference file run from R.
     Similar contents to score_data.run_and_eval().
@@ -124,13 +124,13 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, make_dense=F
 
     if make_dense:
         adj_mat_preproc = adj_mat_preproc.toarray()
-    scores_data_frame = scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc,
-                                                               which_methods=methods_to_run,
-                                                               pi_vector=pi_vector_preproc, back_compat=True,
-                                                               num_docs=adj_mat_preproc.shape[0],
-                                                               mixed_pairs_sims=mixed_pairs_sims,
-                                                               print_timing=True, run_all_implementations=run_all,
-                                                    prefer_faiss=prefer_faiss)
+    scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc, which_methods=methods_to_run,
+                                outfile_csv_gz=scored_pairs_file_new, pi_vector=pi_vector_preproc, back_compat=True,
+                                num_docs=adj_mat_preproc.shape[0], mixed_pairs_sims=mixed_pairs_sims,
+                                print_timing=True, run_all_implementations=run_all, prefer_faiss=prefer_faiss)
+    with gzip.open(scored_pairs_file_new, 'r') as fpin:
+        scores_data_frame = pd.read_csv(fpin)
+
     scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat), num_true_pairs=5)
     end = timer()
     print("ran " \
@@ -331,6 +331,7 @@ if __name__ == "__main__":
     test_adj_and_phi()
     test_adj_and_phi2()
 
+    tmp_scored_pairs_file_new = 'reality_appweek_50/tmp.scoredPairs.csv.gz'
     # Test a specific implementation of weighted_corr
     test_only_wc(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                  scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
@@ -338,14 +339,17 @@ if __name__ == "__main__":
     # Test reality mining example
     print("\nReality mining, data set #50 -- as sparse matrix")
     test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
-                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
+                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
+                               scored_pairs_file_new = tmp_scored_pairs_file_new)
     print("\nReality mining, data set #50 -- as dense matrix")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
+                                              scored_pairs_file_new=tmp_scored_pairs_file_new,
                                               make_dense=True)  # much faster. But won't scale to large matrices.
     print("\nReality mining, data set #50 -- dense with FAISS")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                                               scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
+                                              scored_pairs_file_new=tmp_scored_pairs_file_new,
                                               make_dense=True, prefer_faiss=True)
     # Test AUCs for reality ex
     test_eval_aucs(scores_frame, aucs_file_R = "reality_appweek_50/results50.txt", tolerance = 1e-03)
@@ -353,17 +357,21 @@ if __name__ == "__main__":
 
     # Test newsgroups example (plain run was too complicated to replicate, but flipped run was later, so
     # more standardized)
+    tmp_scored_pairs_file_new = 'ng_aa_data2/tmp.scoredPairs.csv.gz'
     print("\nNewsgroups, data set #2, flipped -- as sparse matrix")
     test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
+                               scored_pairs_file_new=tmp_scored_pairs_file_new,
                                flip_high_ps=True)
     print("\nNewsgroups, data set #2, flipped -- as dense matrix")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                               scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
+                                              scored_pairs_file_new=tmp_scored_pairs_file_new,
                                               flip_high_ps=True, make_dense=True)
     print("\nNewsgroups, data set #2, flipped -- dense with FAISS")
     scores_frame = test_pair_scores_against_R(adj_mat_infile ="ng_aa_data2/data2_adjMat_quarterAffils.mtx.gz",
                                               scored_pairs_file_R = "ng_aa_data2/data2-inferenceFlip.scoredPairs.csv.gz",
+                                              scored_pairs_file_new=tmp_scored_pairs_file_new,
                                               flip_high_ps=True, make_dense=True, prefer_faiss=True)
     # Test AUCs for newsgroups ex
     test_eval_aucs(scores_frame, aucs_file_R = "ng_aa_data2/results2-flip_allto6.txt", tolerance = 1e-04)

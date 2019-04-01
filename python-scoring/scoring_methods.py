@@ -24,7 +24,7 @@ all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming
 # run_all_implementations: can use False (default), True or 1 for more, or 2 to do even the slow ones
 # Returns a table of scores with one column per method
 # Direction of returned scores: higher for true pairs
-def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
+def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None, print_timing=False,
                 run_all_implementations=False, prefer_faiss=False, **all_named_args):
     scores = {}
     if which_methods == 'all':
@@ -150,9 +150,9 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, print_timing=False,
         our_data_frame = our_data_frame.merge(extras_data_frame, on=['item1', 'item2'], suffixes=('_x', ''))
 
     if len(methods_for_faiss):
-        return our_data_frame.merge(faiss_data_frame)
-    else:
-        return our_data_frame
+        our_data_frame = our_data_frame.merge(faiss_data_frame)
+
+    our_data_frame.to_csv(outfile_csv_gz, index=False, compression="gzip")
 
 
 def item_ids(pairs_generator):
@@ -339,3 +339,10 @@ def wc_terms(pi_vector, num_affils):
 #
 # Not fussing with these right now, because faiss is yet faster. (Betting on being able to use it even with
 # sparse matrices.)
+#
+# -hamming: it's equivalent to rowi.sum() + rowj.sum() - 2 * shared_size(i,j). Row sums can be taken just once, and
+# shared_size is efficient, so it'd be a single matrix operation once we have shared_size. The only tricky part = the
+# logic of whether we have shared_size available.
+# -likewise, jaccard is then shared_size(i,j) / (rowi.sum() + rowj.sum() - shared_size(i,j))
+
+# --> However: for these, we really want shared_size to be in a matrix.

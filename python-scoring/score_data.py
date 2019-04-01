@@ -6,6 +6,7 @@ import gzip
 from sklearn.metrics import roc_auc_score
 import sys
 import numpy as np
+import pandas as pd
 
 import scoring_methods
 import bipartite_fitting
@@ -181,7 +182,8 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
             return gen_all_pairs(adj_mat, row_labels)
         pairs_generator = my_pairs_gen
 
-    scores_data_frame = scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
+    scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
+                                                    outfile_csv_gz=pair_scores_outfile,
                                                     pi_vector=pi_vector, num_docs=adj_mat.shape[0],
                                                     mixed_pairs_sims = 'standard',
                                                     exp_model=graph_models.get('exponential', None),
@@ -189,6 +191,9 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                                                     prefer_faiss=prefer_faiss)
     # if scores_subset is not None:
     #     scores_data_frame = pd.merge(scores_subset, scores_data_frame, on=['item1', 'item2'])
+
+    with gzip.open(pair_scores_outfile, 'r') as fpin:
+        scores_data_frame = pd.read_csv(fpin)
 
     method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
     scores_data_frame['label'] = list(map(int, true_labels_func(pairs_generator(adj_mat))))
@@ -253,17 +258,13 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
 
         pairs_generator = my_pairs_gen
 
-    scores_data_frame = scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
+    scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
+                                                    outfile_csv_gz=pair_scores_outfile,
                                                     pi_vector=pi_vector, num_docs=adj_mat.shape[0],
                                                     mixed_pairs_sims='standard',
                                                     exp_model=graph_models.get('exponential', None),
                                                     print_timing=print_timing,
                                                     prefer_faiss=prefer_faiss)
-
-    # save results
-    method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
-    scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2'] + sorted(method_names), copy=False)
-    scores_data_frame.to_csv(pair_scores_outfile, index=False, compression="gzip")
     print('scored pairs saved to ' + pair_scores_outfile)
 
 

@@ -98,7 +98,7 @@ def resources_test(run_all_implementations=True):
         # scores_faiss = scoring_with_faiss.score_pairs_faiss(adj_mat, methods_to_run, print_timing=True,
         #                                                     pi_vector=pi_vector_preproc)
 
-        scores_data_frame = score_data.scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc_dense,
+        score_data.scoring_methods.score_pairs(score_data.gen_all_pairs, adj_mat_preproc_dense,
                                                                    which_methods=methods_to_run,
                                                                    pi_vector=pi_vector_preproc, back_compat=True,
                                                                    num_docs=adj_mat_preproc.shape[0],
