@@ -166,12 +166,14 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
         extra_implementations.run_extra_implementations2(pairs_generator, adj_matrix, which_methods, scores_storage,
                                                          print_timing=print_timing, **all_named_args)
 
-    start = timer()
-    scores_storage.to_csv_gz(outfile_csv_gz, pairs_generator, adj_matrix)
-    end = timer()
-    if print_timing:
-        print("saved scores to outfile " + outfile_csv_gz + ": " + str(end - start) + " secs")
-
+    if outfile_csv_gz is not None:
+        start = timer()
+        scores_storage.to_csv_gz(outfile_csv_gz, pairs_generator, adj_matrix)
+        end = timer()
+        if print_timing:
+            print("saved scores to outfile " + outfile_csv_gz + ": " + str(end - start) + " secs")
+    elif print_timing:
+        print("Throwing away scores, since no outfile was specified")
 
 
 def item_ids(pairs_generator):
@@ -306,7 +308,7 @@ def wc_terms(pi_vector, num_affils):
 # Current status on speed (notes to self):
 # -Dense matrix calcs are much faster. It's a time vs. space tradeoff.
 # -Slowest methods, when using sparse adj_mat: anything that doesn't use *transform or sklearn.
-#   shared_weight1100, mixedPairs & weightedCorr; pearson
+#   weightedCorr_exp (worst, by far); shared_weight1100, mixedPairs & weightedCorr; (runner up) pearson
 # -Slowest methods when using dense adj_mat:
 #   pearson
 # (new: Hamming & Jaccard now just add a smidgen of time beyond shared_size.)

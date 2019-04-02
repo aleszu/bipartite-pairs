@@ -102,7 +102,7 @@ def test_adj_and_phi2():
 
 
 def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs_file_new, make_dense=False,
-                               flip_high_ps=False, run_all=1, prefer_faiss=False):
+                               flip_high_ps=False, run_all=0, prefer_faiss=False):
     """
     Starting from an adj matrix, score pairs (using current implementation) and compare to reference file run from R.
     Similar contents to score_data.run_and_eval().

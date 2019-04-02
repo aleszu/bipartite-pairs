@@ -63,6 +63,8 @@ def cosine_transform(adj_matrix, make_dense=False):
     if sparse.isspmatrix(adj_matrix) and make_dense:
         adj_matrix = adj_matrix.toarray()
 
+    # could replace the rest with "return normalize(adj_matrix)" using sklearn
+
     if sparse.isspmatrix(adj_matrix):
         row_norms = 1 / np.sqrt(adj_matrix.power(2).sum(axis=1).A1)
         row_norms[np.isinf(row_norms)] = 0

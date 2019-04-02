@@ -6,7 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
 from sklearn.preprocessing import scale
 import transforms_for_dot_prods
-from scoring_methods import compute_scores_with_transform
+import scoring_methods
 
 # Leaves matrix sparse if it starts sparse.
 # Note that the package's call computes scores among all pairs of rows -- may not always be what we want.
@@ -94,7 +94,7 @@ def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
     else:
         # Betting that computing the scores first is faster than doing without them
         ss_scores = scores_storage.create_and_store_unofficial("shared_size", dtype=int if back_compat else float)
-        compute_scores_with_transform(pairs_generator, adj_matrix,
+        scoring_methods.compute_scores_with_transform(pairs_generator, adj_matrix,
                                       transforms_for_dot_prods.shared_size_transform, ss_scores,
                                       print_timing=print_timing, back_compat=back_compat)
 
@@ -124,7 +124,7 @@ def hamming_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
     else:
         # Betting that computing the scores first is faster than doing without them
         ss_scores = scores_storage.create_and_store_unofficial("shared_size", dtype=int if back_compat else float)
-        compute_scores_with_transform(pairs_generator, adj_matrix,
+        scoring_methods.compute_scores_with_transform(pairs_generator, adj_matrix,
                                       transforms_for_dot_prods.shared_size_transform, ss_scores,
                                       print_timing=print_timing, back_compat=back_compat)
 
