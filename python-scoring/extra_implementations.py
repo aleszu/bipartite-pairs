@@ -25,52 +25,59 @@ def run_extra_implementations2(pairs_generator, adj_matrix, which_methods, score
 
     if 'cosine' in which_methods:
         out_data = scores_storage_magic_d.create_and_store_array('cosine')
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), cosine_sim, out_data,
-                                            print_timing=print_timing)
+        compute_scores_orig(pairs_generator(adj_matrix), cosine_sim, out_data,
+                            print_timing=print_timing)
         scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, out_data,
                                                 print_timing=print_timing, use_package=False)
     if 'cosineIDF' in which_methods:
         idf_weights = np.log(1/all_named_args['pi_vector'])
         out_data = scores_storage_magic_d.create_and_store_array('cosineIDF')
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), cosine_sim, out_data,
-                                            print_timing=print_timing, weights=idf_weights)
+        compute_scores_orig(pairs_generator(adj_matrix), cosine_sim, out_data,
+                            print_timing=print_timing, weights=idf_weights)
         scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, out_data, weights=idf_weights,
                                                 print_timing=print_timing, use_package=False)
     if 'shared_size' in which_methods:
         back_compat = all_named_args.get('back_compat', False)
         out_data = scores_storage_magic_d.create_and_store_array('shared_size', dtype = int if back_compat else float)
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), shared_size, out_data,
-                                            print_timing=print_timing,
-                                            back_compat=all_named_args.get('back_compat', False))
+        compute_scores_orig(pairs_generator(adj_matrix), shared_size, out_data,
+                            print_timing=print_timing,
+                            back_compat=all_named_args.get('back_compat', False))
     if 'adamic_adar' in which_methods:
         # for adamic_adar and newman, need to ensure every affil is seen at least twice (for the 1/1 terms,
         # which are all they use). this happens automatically if p_i was learned empirically. this keeps the score per
         # term in [0, 1].
         num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
         out_data = scores_storage_magic_d.create_and_store_array('adamic_adar')
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), adamic_adar, out_data,
-                                            print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
+        compute_scores_orig(pairs_generator(adj_matrix), adamic_adar, out_data,
+                            print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
     if 'newman' in which_methods:
         num_docs_word_occurs_in = np.maximum(all_named_args['num_docs'] * all_named_args['pi_vector'], 2)
         out_data = scores_storage_magic_d.create_and_store_array('newman')
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), newman, out_data,
-                                            print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
+        compute_scores_orig(pairs_generator(adj_matrix), newman, out_data,
+                            print_timing=print_timing, affil_counts=num_docs_word_occurs_in)
 
     if 'shared_weight11' in which_methods:
         out_data = scores_storage_magic_d.create_and_store_array('shared_weight11')
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), shared_weight11, out_data,
-                                            p_i=all_named_args['pi_vector'], print_timing=print_timing)
+        compute_scores_orig(pairs_generator(adj_matrix), shared_weight11, out_data,
+                            p_i=all_named_args['pi_vector'], print_timing=print_timing)
 
     if 'pearson' in which_methods:
         out_data = scores_storage_magic_d.create_and_store_array('pearson')
         simple_only_phi_coeff(pairs_generator, adj_matrix, out_data, print_timing=print_timing)
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), pearson_as_phi, out_data, print_timing=print_timing)
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), pearson_cor, out_data, print_timing=print_timing)
-
+        compute_scores_orig(pairs_generator(adj_matrix), pearson_as_phi, out_data, print_timing=print_timing)
+        compute_scores_orig(pairs_generator(adj_matrix), pearson_cor, out_data, print_timing=print_timing)
+    if 'hamming' in which_methods:
+        back_compat = all_named_args.get('back_compat', False)
+        out_data = scores_storage_magic_d.create_and_store_array('hamming', dtype=int if back_compat else float)
+        compute_scores_orig(pairs_generator(adj_matrix), hamming, out_data, print_timing=print_timing,
+                            back_compat=back_compat)
+    if 'jaccard' in which_methods:
+        out_data = scores_storage_magic_d.create_and_store_array('jaccard')
+        compute_scores_orig(pairs_generator(adj_matrix), jaccard, out_data, print_timing=print_timing)
     if 'weighted_corr' in which_methods:
         out_data = scores_storage_magic_d.create_and_store_array('weighted_corr')
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), weighted_corr, out_data,
-                                            print_timing=print_timing, p_i=all_named_args['pi_vector'])
+        compute_scores_orig(pairs_generator(adj_matrix), weighted_corr, out_data,
+                            print_timing=print_timing, p_i=all_named_args['pi_vector'])
         compute_scores_from_terms0(pairs_generator, adj_matrix, scoring_methods.wc_terms, out_data,
                                    pi_vector=all_named_args['pi_vector'], num_affils=adj_matrix.shape[1],
                                    print_timing=print_timing)
@@ -80,22 +87,49 @@ def run_extra_implementations2(pairs_generator, adj_matrix, which_methods, score
         compute_scores_from_terms0(pairs_generator, adj_matrix, scoring_methods.shared_weight1100_terms, out_data,
                                    pi_vector=all_named_args['pi_vector'], print_timing=print_timing)
 
-        scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), shared_weight1100, out_data,
-                                            print_timing=print_timing, p_i=all_named_args['pi_vector'])
+        compute_scores_orig(pairs_generator(adj_matrix), shared_weight1100, out_data,
+                            print_timing=print_timing, p_i=all_named_args['pi_vector'])
 
     if 'mixed_pairs' in which_methods:
         for mp_sim in all_named_args['mixed_pairs_sims']:
             method_name = 'mixed_pairs_' + str(mp_sim)
             out_data = scores_storage_magic_d.create_and_store_array(method_name)
-            scoring_methods.compute_scores_orig(pairs_generator(adj_matrix), mixed_pairs, out_data,
-                                                p_i = all_named_args['pi_vector'], sim=mp_sim, print_timing=print_timing)
+            compute_scores_orig(pairs_generator(adj_matrix), mixed_pairs, out_data,
+                                p_i = all_named_args['pi_vector'], sim=mp_sim, print_timing=print_timing)
             compute_scores_from_terms0(pairs_generator, adj_matrix, scoring_methods.mixed_pairs_terms, out_data,
                                        pi_vector=all_named_args['pi_vector'], sim=mp_sim, print_timing=print_timing)
 
 
 
+# General method to return a vector of scores from running one method
+def compute_scores_orig(pairs_generator, sim_func, scores_out, print_timing=False, **named_args_to_func):
+    start = timer()
+    for (i, j, _, _, pair_x, pair_y) in pairs_generator:
+        scores_out[i,j] = (sim_func(pair_x, pair_y, **named_args_to_func))
+
+    end = timer()
+    if print_timing:
+        print("original " + sim_func.__name__ + ": " + str(end - start) + " secs")
+
 
 ## Indiv pair computations that can be called from compute_scores_orig ##
+
+# Jaccard, pearson, cosine and weighted cosine: avoid division by zero. Wherever we would see 0/0, return 0 instead.
+def jaccard(x, y):
+    num_ones = np.logical_or(x, y).sum()  # cmpts where either vector has a 1
+    if num_ones > 0:
+        return float(x.dot(y)) / num_ones
+    else:
+        return 0
+
+
+# Normalized (going forward) to be in [0,1]
+def hamming(x, y, back_compat = False):
+    hd = np.logical_xor(x, y).sum()
+    if back_compat:
+        return hd
+    else:
+        return 1 - (float(hd)/x.shape[0])
 
 
 def weighted_corr(x, y, p_i):

@@ -6,6 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
 from sklearn.preprocessing import scale
 import transforms_for_dot_prods
+from scoring_methods import compute_scores_with_transform
 
 # Leaves matrix sparse if it starts sparse.
 # Note that the package's call computes scores among all pairs of rows -- may not always be what we want.
@@ -83,7 +84,65 @@ def simple_only_pearson(pairs_generator, adj_matrix, scores_out, print_timing=Fa
         print('simple_only_pearson: ' + str(end - start) + " secs")
 
 
+
+# jaccard = shared_size(i,j) / (rowi.sum() + rowj.sum() - shared_size(i,j))
+def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_out, print_timing = False, back_compat = False):
+    start = timer()
+
+    if scores_storage.underlying_dict.has_key("shared_size"):
+        ss_scores = scores_storage.retrieve_array("shared_size")
+    else:
+        # Betting that computing the scores first is faster than doing without them
+        ss_scores = scores_storage.create_and_store_unofficial("shared_size", dtype=int if back_compat else float)
+        compute_scores_with_transform(pairs_generator, adj_matrix,
+                                      transforms_for_dot_prods.shared_size_transform, ss_scores,
+                                      print_timing=print_timing, back_compat=back_compat)
+
+    rowsums = np.asarray(adj_matrix.sum(axis=1)).squeeze()
+    # create a square matrix with rowsums along each row
+    rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
+
+    if back_compat:
+        scores_out[:] = (ss_scores / (rowsums_mat + rowsums_mat.transpose() - ss_scores))[:]
+    else:
+        scores_out[:] = ((ss_scores * adj_matrix.shape[1]).round() /
+                         (rowsums_mat + rowsums_mat.transpose() - (ss_scores * adj_matrix.shape[1]).round()))[:]
+    # todo? check for and fix any Nan/Inf's, which would come where rowsums_mat + rowsums_mat.transpose() == 0
+
+    end = timer()
+    if print_timing:
+        print("jaccard_from_sharedsize: " + str(end - start) + " secs")
+
+
+# hamming is equivalent to rowi.sum() + rowj.sum() - 2 * shared_size(i,j)
+# If not back_compat, then every term gets divided by num affils, and we take (1 - x) to make it similarity, not distance.
+def hamming_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_out, print_timing = False, back_compat = False):
+    start = timer()
+
+    if scores_storage.underlying_dict.has_key("shared_size"):
+        ss_scores = scores_storage.retrieve_array("shared_size")
+    else:
+        # Betting that computing the scores first is faster than doing without them
+        ss_scores = scores_storage.create_and_store_unofficial("shared_size", dtype=int if back_compat else float)
+        compute_scores_with_transform(pairs_generator, adj_matrix,
+                                      transforms_for_dot_prods.shared_size_transform, ss_scores,
+                                      print_timing=print_timing, back_compat=back_compat)
+
+    rowsums = np.asarray(adj_matrix.sum(axis=1)).squeeze()
+    # create a square matrix with rowsums along each row
+    rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
+
+    if back_compat:
+        scores_out[:] = (rowsums_mat + rowsums_mat.transpose() - 2 * ss_scores)[:]
+    else:  # keeping things as integers until the last step, to preserve floating point precision
+        scores_out[:] = ((adj_matrix.shape[1] -
+                         (rowsums_mat + rowsums_mat.transpose() - 2 * (ss_scores * adj_matrix.shape[1]).round()))
+                         / float(adj_matrix.shape[1]))[:]
+
+    end = timer()
+    if print_timing:
+        print("hamming_from_sharedsize: " + str(end - start) + " secs")
+
 # Sparsity type rules (notes to self):
 # -Each function's comments say whether it's forced to create a dense matrix
 # -A scipy.sparse made dense turns into a matrix(), while if I convert it to dense outside, it'll be (and stay) an ndarray
-

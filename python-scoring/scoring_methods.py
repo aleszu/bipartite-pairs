@@ -1,7 +1,6 @@
 from __future__ import print_function
 from builtins import str
 import numpy as np
-import pandas
 from scipy import sparse
 from timeit import default_timer as timer
 #from pympler import asizeof
@@ -10,30 +9,36 @@ import extra_implementations
 import transforms_for_dot_prods
 import magic_dictionary
 
-
-
 all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson',
                        'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs',
                        'weighted_corr', 'weighted_corr_exp']
-# Required args for methods:
-# 'pi_vector' needed for cosineIDF, weighted_corr, shared_weight11, shared_weight1100, adamic_adar, newman
-# 'num_docs' needed for adamic_adar and newman
-# 'mixed_pairs_sims' needed for mixed_pairs
-# 'exp_model' needed for wc_exp
 
-# pairs_generator: a function that takes adj_matrix as an argument
-# run_all_implementations: can use False (default), True or 1 for more, or 2 to do even the slow ones
-# Returns a table of scores with one column per method
-# Direction of returned scores: higher for true pairs
 def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None, print_timing=False,
                 run_all_implementations=False, prefer_faiss=False, **all_named_args):
+    """
+    :param pairs_generator: a function that takes adj_matrix as an argument
+    :param adj_matrix:
+    :param which_methods:
+    :param outfile_csv_gz:
+    :param print_timing:
+    :param run_all_implementations: can use False (default), True or 1 for more, or 2 to do even the slow ones
+    :param prefer_faiss:
+    :param all_named_args:
+        Required args for methods:
+        'pi_vector' needed for cosineIDF, weighted_corr, shared_weight11, shared_weight1100, adamic_adar, newman
+        'num_docs' needed for adamic_adar and newman
+        'mixed_pairs_sims' needed for mixed_pairs
+        'exp_model' needed for wc_exp
+    :return: Returns a table of scores with one column per method.
+    Direction of returned scores: higher for true pairs.
+    """
 
     if which_methods == 'all':
         which_methods = all_defined_methods
     if all_named_args.get('mixed_pairs_sims', None) == 'standard':
         all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
 
-    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], force_memmap=False)
+    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], force_memmap=True)
 
     which_methods, methods_for_faiss = separate_faiss_methods(which_methods, prefer_faiss, sparse.isspmatrix(adj_matrix))
     if len(methods_for_faiss):
@@ -49,9 +54,10 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
     # Run them with fastest first:
     # 'cosine', 'cosineIDF'
     #'shared_size', 'adamic_adar', 'newman', 'shared_weight11'   -- use fast "transform"
-    #'weighted_corr' uses "transform" when dense, "terms" when sparse -- speed varies accordingly
-    #'shared_weight1100', 'mixed_pairs' -- only have "terms" method
-    #'hamming', 'pearson', 'jaccard',   -- currently the slowest
+    #'weighted_corr' and 'weighted_corr_exp' use "transform" when dense, "terms" when sparse -- speed varies accordingly
+    #'shared_weight1100', 'mixed_pairs' -- only have "terms" method, uses 2 calls to transform when dense
+    #'hamming', 'jaccard'  -- now fast if shared_size done first
+    #'pearson'   -- currently the slowest
 
     if 'cosine' in which_methods:
         out_data = scores_storage.create_and_store_array('cosine')
@@ -120,8 +126,8 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
         out_data = scores_storage.create_and_store_array('weighted_corr_exp')
         if sparse.isspmatrix(adj_matrix):
             # keep it sparse; can't use fastest method
-            simple_only_wc_exp_scores(pairs_generator, adj_matrix, out_data,
-                                      exp_model=all_named_args['exp_model'], print_timing=print_timing)
+            simple_only_wc_exp_scores(pairs_generator, adj_matrix, all_named_args['exp_model'], out_data,
+                                      print_timing=print_timing)
 
         else:
             compute_scores_with_transform(pairs_generator, adj_matrix,
@@ -144,15 +150,15 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
     if 'hamming' in which_methods:
         back_compat = all_named_args.get('back_compat', False)
         out_data = scores_storage.create_and_store_array('hamming', dtype = int if back_compat else float)
-        compute_scores_orig(pairs_generator(adj_matrix), hamming, out_data, print_timing=print_timing,
-                            back_compat=back_compat)
+        scoring_methods_fast.hamming_from_sharedsize(pairs_generator, adj_matrix, scores_storage, out_data,
+                                print_timing=print_timing, back_compat=back_compat)
+    if 'jaccard' in which_methods:
+        out_data = scores_storage.create_and_store_array('jaccard')
+        scoring_methods_fast.jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, out_data,
+                                print_timing=print_timing, back_compat=back_compat)
     if 'pearson' in which_methods:
         out_data = scores_storage.create_and_store_array('pearson')
         scoring_methods_fast.simple_only_pearson(pairs_generator, adj_matrix, out_data, print_timing=print_timing)
-
-    if 'jaccard' in which_methods:
-        out_data = scores_storage.create_and_store_array('jaccard')
-        compute_scores_orig(pairs_generator(adj_matrix), jaccard, out_data, print_timing=print_timing)
 
 
 
@@ -219,42 +225,9 @@ def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, scor
     # return scores
 
 
-# General method to return a vector of scores from running one method
-def compute_scores_orig(pairs_generator, sim_func, scores_out, print_timing=False, **named_args_to_func):
-    start = timer()
-    # scores = []
-    for (i, j, _, _, pair_x, pair_y) in pairs_generator:
-        scores_out[i,j] = (sim_func(pair_x, pair_y, **named_args_to_func))
-
-    end = timer()
-    if print_timing:
-        print("original " + sim_func.__name__ + ": " + str(end - start) + " secs")
-
-    # return scores
-
-
-# Jaccard, pearson, cosine and weighted cosine: avoid division by zero. Wherever we would see 0/0, return 0 instead.
-def jaccard(x, y):
-    num_ones = np.logical_or(x, y).sum()  # cmpts where either vector has a 1
-    if num_ones > 0:
-        return float(x.dot(y)) / num_ones
-    else:
-        return 0
-
-
-# Normalized (going forward) to be in [0,1]
-def hamming(x, y, back_compat = False):
-    hd = np.logical_xor(x, y).sum()
-    if back_compat:
-        return hd
-    else:
-        return 1 - (float(hd)/x.shape[0])
-
-
 # Basic formula, no tricks (yet)  # todo: test
 def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, scores_out, print_timing=False):
     start = timer()
-    # scores = []
     for (i, j, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         p_rowx = exp_model.edge_prob_row(i)
         p_rowy = exp_model.edge_prob_row(j)
@@ -264,7 +237,6 @@ def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, scores_out
     end = timer()
     if print_timing:
         print("simple_only_wc_exp_scores: " + str(end - start) + " secs")
-    # return scores
 
 
 # This version: rather than explicitly computing the scores for 1/0 terms, have a base_score that assume all entries
@@ -276,7 +248,6 @@ def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, score
 
     start = timer()
     terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
-    # scores = []
     base_score = value_10 * adj_matrix.shape[1]
     terms_for_11 -= value_10
     terms_for_00 -= value_10
@@ -288,14 +259,12 @@ def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, score
     end = timer()
     if print_timing:
         print(scores_bi_func.__name__ + ": " + str(end - start) + " secs")
-    # return scores
 
 
 # quick attempt to do like compute_faiss_terms_scores() -- only possible for dense
 def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func, scores_out, print_timing=False, **named_args_to_func):
     start = timer()
     terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
-    # scores = []
     base_score = value_10 * adj_matrix.shape[1]
     terms_for_11 -= value_10
     terms_for_00 -= value_10
@@ -311,7 +280,6 @@ def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func,
     end = timer()
     if print_timing:
         print("dense " + scores_bi_func.__name__ + ": " + str(end - start) + " secs")
-    # return scores
 
 
 def shared_weight1100_terms(pi_vector):
@@ -337,10 +305,11 @@ def wc_terms(pi_vector, num_affils):
 
 # Current status on speed (notes to self):
 # -Dense matrix calcs are much faster. It's a time vs. space tradeoff.
-# -Slowest methods, when using sparse adj_mat:
-#   shared_weight1100, mixedPairs & weightedCorr; pearson, jaccard & hamming
-# -Slowest methods when using dense adj_mat: [I improved the *_terms methods for dense!]
-#   jaccard & pearson; hamming
+# -Slowest methods, when using sparse adj_mat: anything that doesn't use *transform or sklearn.
+#   shared_weight1100, mixedPairs & weightedCorr; pearson
+# -Slowest methods when using dense adj_mat:
+#   pearson
+# (new: Hamming & Jaccard now just add a smidgen of time beyond shared_size.)
 # -when calling score_pairs with run_all_implementations=False, it uses the one that's been fastest on the example data,
 #  but best one could change on different sized data sets, and depending on whether matrix is sparse or dense.
 
@@ -352,13 +321,6 @@ def wc_terms(pi_vector, num_affils):
 #
 # Not fussing with these right now, because faiss is yet faster. (Betting on being able to use it even with
 # sparse matrices.)
-#
-# -hamming: it's equivalent to rowi.sum() + rowj.sum() - 2 * shared_size(i,j). Row sums can be taken just once, and
-# shared_size is efficient, so it'd be a single matrix operation once we have shared_size. The only tricky part = the
-# logic of whether we have shared_size available.
-# -likewise, jaccard is then shared_size(i,j) / (rowi.sum() + rowj.sum() - shared_size(i,j))
-
-# --> However: for these, we really want shared_size to be in a matrix.
 
 # Note: it's seeming like dense + memmap is going to be preferred over sparse matrix methods. I.e., it's worth using disk
 # space to save time. Do I want to drop support for sparse matrices?

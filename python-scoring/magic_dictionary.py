@@ -22,11 +22,18 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
     def __init__(self, ndarray_shape):
         self.underlying_dict = {}
         self.ndarray_shape = ndarray_shape
+        self.hidden_items = set()
 
     @abstractmethod
     # use "int" and "float" to have printing handled right
     def create_and_store_array(self, key, dtype):
         pass
+
+    # works just like the usual create_and_store_array(), except these are added to a special list
+    # of variables that don't show up as columns in the outfile
+    def create_and_store_unofficial(self, key, dtype):
+        self.hidden_items.add(key)
+        return self.create_and_store_array(key, dtype)
 
     @abstractmethod
     def retrieve_array(self, key):
@@ -37,7 +44,7 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
         pass
 
     def getkeys(self):
-        return(self.underlying_dict.keys())
+        return(set(self.underlying_dict.keys()) - self.hidden_items)
 
     def rename_method(self, old_name, new_name):
         self.underlying_dict[new_name] = self.underlying_dict.pop(old_name)
