@@ -8,6 +8,7 @@ from timeit import default_timer as timer
 import scoring_methods_fast
 import extra_implementations
 import transforms_for_dot_prods
+import magic_dictionary
 
 
 
@@ -26,26 +27,26 @@ all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming
 # Direction of returned scores: higher for true pairs
 def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None, print_timing=False,
                 run_all_implementations=False, prefer_faiss=False, **all_named_args):
-    scores = {}
+
     if which_methods == 'all':
         which_methods = all_defined_methods
     if all_named_args.get('mixed_pairs_sims', None) == 'standard':
         all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
 
-    # first pass through the generator to paste in row ids
-    scores['item1'], scores['item2'] = item_ids(pairs_generator(adj_matrix))
+    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], force_memmap=False)
 
     which_methods, methods_for_faiss = separate_faiss_methods(which_methods, prefer_faiss, sparse.isspmatrix(adj_matrix))
     if len(methods_for_faiss):
         import scoring_with_faiss
-        faiss_data_frame = scoring_with_faiss.score_pairs_faiss_all_exact(adj_matrix, methods_for_faiss,
+        scoring_with_faiss.score_pairs_faiss_all_exact(adj_matrix, methods_for_faiss, scores_storage,
                                                                       print_timing=print_timing, **all_named_args)
-        faiss_data_frame = faiss_data_frame.rename(columns={oldcol : oldcol[:-6] for oldcol in faiss_data_frame.columns
-                                         if oldcol[-6:] == '_faiss'})
-        faiss_data_frame = faiss_data_frame.rename(columns={oldcol : 'mixed_pairs' + oldcol[17:] for oldcol in faiss_data_frame.columns
-                                         if oldcol[:17] == 'mixed_pairs_faiss'})
+        for oldcol in scores_storage.getkeys():
+            if oldcol[-6:] == '_faiss':
+                scores_storage.rename_method(oldcol, oldcol[:-6])
+            if oldcol[:17] == 'mixed_pairs_faiss':
+                scores_storage.rename_method(oldcol, 'mixed_pairs' + oldcol[17:])
 
-        # Run them with fastest first:
+    # Run them with fastest first:
     # 'cosine', 'cosineIDF'
     #'shared_size', 'adamic_adar', 'newman', 'shared_weight11'   -- use fast "transform"
     #'weighted_corr' uses "transform" when dense, "terms" when sparse -- speed varies accordingly
@@ -53,106 +54,118 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
     #'hamming', 'pearson', 'jaccard',   -- currently the slowest
 
     if 'cosine' in which_methods:
-        scores['cosine'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix,
-                                                                   print_timing=print_timing, use_package=True,
-                                                                   use_batches=True)
+        out_data = scores_storage.create_and_store_array('cosine')
+        scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, out_data,
+                                                print_timing=print_timing, use_package=True,
+                                                use_batches=True)
 
     if 'cosineIDF' in which_methods:
         idf_weights = np.log(1/all_named_args['pi_vector'])
-        scores['cosineIDF'] = scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, weights=idf_weights,
-                                                                      print_timing=print_timing, use_package=True,
-                                                                      use_batches=True)
+        out_data = scores_storage.create_and_store_array('cosineIDF')
+        scoring_methods_fast.simple_only_cosine(pairs_generator, adj_matrix, out_data, weights=idf_weights,
+                                                print_timing=print_timing, use_package=True,
+                                                use_batches=True)
 
     if 'shared_size' in which_methods:
-        scores['shared_size'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                              transforms_for_dot_prods.shared_size_transform,
-                                                              print_timing=print_timing,
-                                                              back_compat=all_named_args.get('back_compat', False))
+        back_compat = all_named_args.get('back_compat', False)
+        out_data = scores_storage.create_and_store_array('shared_size', dtype=int if back_compat else float)
+        compute_scores_with_transform(pairs_generator, adj_matrix,
+                                      transforms_for_dot_prods.shared_size_transform, out_data,
+                                      print_timing=print_timing,
+                                      back_compat=all_named_args.get('back_compat', False))
     if 'adamic_adar' in which_methods:
-        scores['adamic_adar'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                              transforms_for_dot_prods.adamic_adar_transform,
-                                                              print_timing=print_timing,
-                                                              num_docs=all_named_args['num_docs'],
-                                                              pi_vector=all_named_args['pi_vector'])
+        out_data = scores_storage.create_and_store_array('adamic_adar')
+        compute_scores_with_transform(pairs_generator, adj_matrix,
+                                      transforms_for_dot_prods.adamic_adar_transform, out_data,
+                                      print_timing=print_timing,
+                                      num_docs=all_named_args['num_docs'],
+                                      pi_vector=all_named_args['pi_vector'])
     if 'newman' in which_methods:
-        scores['newman'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                         transforms_for_dot_prods.newman_transform,
-                                                         print_timing=print_timing, num_docs=all_named_args['num_docs'],
-                                                         pi_vector=all_named_args['pi_vector'])
+        out_data = scores_storage.create_and_store_array('newman')
+        compute_scores_with_transform(pairs_generator, adj_matrix,
+                                      transforms_for_dot_prods.newman_transform, out_data,
+                                      print_timing=print_timing, num_docs=all_named_args['num_docs'],
+                                      pi_vector=all_named_args['pi_vector'])
     if 'shared_weight11' in which_methods:
-        scores['shared_weight11'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                                  transforms_for_dot_prods.shared_weight11_transform,
-                                                                  print_timing=print_timing,
-                                                                  pi_vector=all_named_args['pi_vector'])
+        out_data = scores_storage.create_and_store_array('shared_weight11')
+        compute_scores_with_transform(pairs_generator, adj_matrix,
+                                      transforms_for_dot_prods.shared_weight11_transform, out_data,
+                                      print_timing=print_timing,
+                                      pi_vector=all_named_args['pi_vector'])
 
     if 'weighted_corr' in which_methods:
+        out_data = scores_storage.create_and_store_array('weighted_corr')
         if sparse.isspmatrix(adj_matrix):
             # keep it sparse; can't use fastest method
-            scores['weighted_corr'] = compute_scores_from_terms(pairs_generator, adj_matrix, wc_terms,
-                                                                pi_vector=all_named_args['pi_vector'],
-                                                                num_affils=adj_matrix.shape[1], print_timing=print_timing)
+            compute_scores_from_terms(pairs_generator, adj_matrix, wc_terms, out_data,
+                                      pi_vector=all_named_args['pi_vector'],
+                                      num_affils=adj_matrix.shape[1], print_timing=print_timing)
 
         else:
-            scores['weighted_corr'] = compute_scores_with_transform(pairs_generator, adj_matrix, transforms_for_dot_prods.wc_transform,
-                                                                    print_timing=print_timing,
-                                                                    pi_vector=all_named_args['pi_vector'])
+            compute_scores_with_transform(pairs_generator, adj_matrix,
+                                          transforms_for_dot_prods.wc_transform, out_data,
+                                          print_timing=print_timing,
+                                          pi_vector=all_named_args['pi_vector'])
 
         if run_all_implementations:
-            scores['weighted_corr'] = extra_implementations.simple_weighted_corr_sparse(pairs_generator, adj_matrix,
-                                                                                       pi_vector=all_named_args['pi_vector'],
-                                                                                       print_timing=print_timing)
+            extra_implementations.simple_weighted_corr_sparse(pairs_generator, adj_matrix, out_data,
+                                                              pi_vector=all_named_args['pi_vector'],
+                                                              print_timing=print_timing)
             if not sparse.isspmatrix(adj_matrix):
-                scores['weighted_corr'] = extra_implementations.simple_only_weighted_corr(
-                                            pairs_generator, adj_matrix, pi_vector=all_named_args['pi_vector'],
-                                            print_timing=print_timing)['weighted_corr']
-
-    if 'weighted_corr_exp' in which_methods:
-        if sparse.isspmatrix(adj_matrix):
-            # keep it sparse; can't use fastest method
-            scores['weighted_corr_exp'] = simple_only_wc_exp_scores(pairs_generator, adj_matrix,
-                                                                    exp_model=all_named_args['exp_model'],
-                                                                    print_timing=print_timing)
-
-        else:
-            scores['weighted_corr_exp'] = compute_scores_with_transform(pairs_generator, adj_matrix,
-                                                                        transforms_for_dot_prods.wc_exp_transform,
-                                                                        exp_model=all_named_args['exp_model'],
-                                                                        print_timing=print_timing)
-
-    if 'shared_weight1100' in which_methods:
-        scores['shared_weight1100'] = compute_scores_from_terms(pairs_generator, adj_matrix, shared_weight1100_terms,
+                extra_implementations.simple_only_weighted_corr(pairs_generator, adj_matrix, out_data,
                                                                 pi_vector=all_named_args['pi_vector'],
                                                                 print_timing=print_timing)
+
+    if 'weighted_corr_exp' in which_methods:
+        out_data = scores_storage.create_and_store_array('weighted_corr_exp')
+        if sparse.isspmatrix(adj_matrix):
+            # keep it sparse; can't use fastest method
+            simple_only_wc_exp_scores(pairs_generator, adj_matrix, out_data,
+                                      exp_model=all_named_args['exp_model'], print_timing=print_timing)
+
+        else:
+            compute_scores_with_transform(pairs_generator, adj_matrix,
+                                          transforms_for_dot_prods.wc_exp_transform, out_data,
+                                          exp_model=all_named_args['exp_model'],
+                                          print_timing=print_timing)
+
+    if 'shared_weight1100' in which_methods:
+        out_data = scores_storage.create_and_store_array('shared_weight1100')
+        compute_scores_from_terms(pairs_generator, adj_matrix, shared_weight1100_terms, out_data,
+                                  pi_vector=all_named_args['pi_vector'], print_timing=print_timing)
     if 'mixed_pairs' in which_methods:
         for mp_sim in all_named_args['mixed_pairs_sims']:
             method_name = 'mixed_pairs_' + str(mp_sim)
-            scores[method_name] = compute_scores_from_terms(pairs_generator, adj_matrix, mixed_pairs_terms,
-                                                            pi_vector=all_named_args['pi_vector'], sim=mp_sim,
-                                                            print_timing=print_timing)
+            out_data = scores_storage.create_and_store_array(method_name)
+            compute_scores_from_terms(pairs_generator, adj_matrix, mixed_pairs_terms, out_data,
+                                      pi_vector=all_named_args['pi_vector'], sim=mp_sim,
+                                      print_timing=print_timing)
 
     if 'hamming' in which_methods:
-        scores['hamming'] = compute_scores_orig(pairs_generator(adj_matrix), hamming, print_timing=print_timing,
-                                                back_compat=all_named_args.get('back_compat', False))
+        back_compat = all_named_args.get('back_compat', False)
+        out_data = scores_storage.create_and_store_array('hamming', dtype = int if back_compat else float)
+        compute_scores_orig(pairs_generator(adj_matrix), hamming, out_data, print_timing=print_timing,
+                            back_compat=back_compat)
     if 'pearson' in which_methods:
-        scores['pearson'] = scoring_methods_fast.simple_only_pearson(pairs_generator, adj_matrix,
-                                                                      print_timing=print_timing)
+        out_data = scores_storage.create_and_store_array('pearson')
+        scoring_methods_fast.simple_only_pearson(pairs_generator, adj_matrix, out_data, print_timing=print_timing)
 
     if 'jaccard' in which_methods:
-        scores['jaccard'] = compute_scores_orig(pairs_generator(adj_matrix), jaccard, print_timing=print_timing)
+        out_data = scores_storage.create_and_store_array('jaccard')
+        compute_scores_orig(pairs_generator(adj_matrix), jaccard, out_data, print_timing=print_timing)
 
 
 
-    our_data_frame = pandas.DataFrame(scores)
     if run_all_implementations:
-        extras_data_frame = extra_implementations.run_extra_implementations2(pairs_generator, adj_matrix, which_methods,
+        extra_implementations.run_extra_implementations2(pairs_generator, adj_matrix, which_methods, scores_storage,
                                                          print_timing=print_timing, **all_named_args)
-        # merge keeps the final version of each column and renames any earlier one
-        our_data_frame = our_data_frame.merge(extras_data_frame, on=['item1', 'item2'], suffixes=('_x', ''))
 
-    if len(methods_for_faiss):
-        our_data_frame = our_data_frame.merge(faiss_data_frame)
+    start = timer()
+    scores_storage.to_csv_gz(outfile_csv_gz, pairs_generator, adj_matrix)
+    end = timer()
+    if print_timing:
+        print("saved scores to outfile " + outfile_csv_gz + ": " + str(end - start) + " secs")
 
-    our_data_frame.to_csv(outfile_csv_gz, index=False, compression="gzip")
 
 
 def item_ids(pairs_generator):
@@ -194,30 +207,30 @@ def separate_faiss_methods(which_methods, faiss_preferred, is_sparse):
 
 # Turns out the scoring functions can be ~10x faster when the function is written as: transform the adjacency matrix, then
 # take dot products of the row pairs.
-def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, print_timing=False, **named_args_to_func):
+def compute_scores_with_transform(pairs_generator, adj_matrix, transf_func, scores_out, print_timing=False, **named_args_to_func):
     start = timer()
     transformed_mat = transf_func(adj_matrix, **named_args_to_func)
-    scores = []
-    for (_, _, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
-        scores.append(pair_x.dot(pair_y))
+    # scores = []
+    for (i, j, _, _, pair_x, pair_y) in pairs_generator(transformed_mat):
+        scores_out[i,j] = (pair_x.dot(pair_y))
     end = timer()
     if print_timing:
         print(transf_func.__name__ + ": " + str(end - start) + " secs")
-    return scores
+    # return scores
 
 
 # General method to return a vector of scores from running one method
-def compute_scores_orig(pairs_generator, sim_func, print_timing=False, **named_args_to_func):
+def compute_scores_orig(pairs_generator, sim_func, scores_out, print_timing=False, **named_args_to_func):
     start = timer()
-    scores = []
-    for (_, _, _, _, pair_x, pair_y) in pairs_generator:
-        scores.append(sim_func(pair_x, pair_y, **named_args_to_func))
+    # scores = []
+    for (i, j, _, _, pair_x, pair_y) in pairs_generator:
+        scores_out[i,j] = (sim_func(pair_x, pair_y, **named_args_to_func))
 
     end = timer()
     if print_timing:
         print("original " + sim_func.__name__ + ": " + str(end - start) + " secs")
 
-    return scores
+    # return scores
 
 
 # Jaccard, pearson, cosine and weighted cosine: avoid division by zero. Wherever we would see 0/0, return 0 instead.
@@ -239,50 +252,50 @@ def hamming(x, y, back_compat = False):
 
 
 # Basic formula, no tricks (yet)  # todo: test
-def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, print_timing=False):
+def simple_only_wc_exp_scores(pairs_generator, adj_matrix, exp_model, scores_out, print_timing=False):
     start = timer()
-    scores = []
+    # scores = []
     for (i, j, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         p_rowx = exp_model.edge_prob_row(i)
         p_rowy = exp_model.edge_prob_row(j)
         score = np.sum( (pair_x - p_rowx) * (pair_y - p_rowy)/ np.sqrt(p_rowx * p_rowy * (1-p_rowx) * (1-p_rowy))) / len(pair_x)
-        scores.append(score)
+        scores_out[i,j] = (score)
 
     end = timer()
     if print_timing:
         print("simple_only_wc_exp_scores: " + str(end - start) + " secs")
-    return scores
+    # return scores
 
 
 # This version: rather than explicitly computing the scores for 1/0 terms, have a base_score that assume all entries
 # are 1/0s, and adjust it for 11 and 00s.
-def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, print_timing=False, **named_args_to_func):
+def compute_scores_from_terms(pairs_generator, adj_matrix, scores_bi_func, scores_out, print_timing=False, **named_args_to_func):
     if not sparse.isspmatrix(adj_matrix):
-        return compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func,
+        return compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func, scores_out,
                                                print_timing=print_timing, **named_args_to_func)
 
     start = timer()
     terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
-    scores = []
+    # scores = []
     base_score = value_10 * adj_matrix.shape[1]
     terms_for_11 -= value_10
     terms_for_00 -= value_10
-    for (_, _, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
+    for (i, j, _, _, pair_x, pair_y) in pairs_generator(adj_matrix):
         sum_11 = terms_for_11.dot(pair_x * pair_y)
         sum_00 = terms_for_00.dot(np.logical_not(pair_x) * np.logical_not(pair_y))
-        scores.append(base_score + sum_11 + sum_00 )
+        scores_out[i,j] = (base_score + sum_11 + sum_00 )
 
     end = timer()
     if print_timing:
         print(scores_bi_func.__name__ + ": " + str(end - start) + " secs")
-    return scores
+    # return scores
 
 
 # quick attempt to do like compute_faiss_terms_scores() -- only possible for dense
-def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func, print_timing=False, **named_args_to_func):
+def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func, scores_out, print_timing=False, **named_args_to_func):
     start = timer()
     terms_for_11, value_10, terms_for_00 = scores_bi_func(**named_args_to_func)
-    scores = []
+    # scores = []
     base_score = value_10 * adj_matrix.shape[1]
     terms_for_11 -= value_10
     terms_for_00 -= value_10
@@ -293,12 +306,12 @@ def compute_scores_from_terms_dense(pairs_generator, adj_matrix, scores_bi_func,
     for (i, j, _, _, pair_x, pair_y) in pairs_generator(adj1):
         sum_11 = pair_x.dot(pair_y)
         sum_00 = adj2[i,].dot(adj2[j,])
-        scores.append(base_score + sum_11 + sum_00 )
+        scores_out[i,j] = (base_score + sum_11 + sum_00)
 
     end = timer()
     if print_timing:
         print("dense " + scores_bi_func.__name__ + ": " + str(end - start) + " secs")
-    return scores
+    # return scores
 
 
 def shared_weight1100_terms(pi_vector):
@@ -346,3 +359,6 @@ def wc_terms(pi_vector, num_affils):
 # -likewise, jaccard is then shared_size(i,j) / (rowi.sum() + rowj.sum() - shared_size(i,j))
 
 # --> However: for these, we really want shared_size to be in a matrix.
+
+# Note: it's seeming like dense + memmap is going to be preferred over sparse matrix methods. I.e., it's worth using disk
+# space to save time. Do I want to drop support for sparse matrices?

@@ -35,7 +35,7 @@ def test_faiss_basic_calls():
     distances, neighbors = index.search(adj_for_faiss, adj_for_faiss.shape[0])  # all pairs
     print('basic calls ran')
 
-
+# todo: convert to new form of calls, which don't return anything, just save a file
 def test_score_wc_faiss():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -61,8 +61,6 @@ def test_score_wc_faiss():
 
 
 # (caution: 'weighted_corr_faiss' may not work as a method name going forward)
-# todo: make test work again. Currently fails because pandas tries to merge 2 identical data frames, and ends up
-# with nothing
 def test_faiss_plus_normal():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
@@ -72,13 +70,48 @@ def test_faiss_plus_normal():
                             # method_spec="all",
                             method_spec=['weighted_corr', 'weighted_corr_faiss'],
                             evals_outfile="reality_appweek_50/python-out/evals-test.txt",
+                            pair_scores_outfile='reality_appweek_50/tmp.scoredPairs.csv.gz',
                             print_timing=True)
 
 
 # borrowed from computational_resources.py
-def resources_test(run_all_implementations=True):
-    # Let's read in portions of a big matrix in increasing size, and for each size, score all pairs (both sparse and dense).
-    # This will let us see how things scale and where memory limits will come in.
+def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_outfile):
+    infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
+
+    num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
+    # num_nodes = [2000]
+    for num_to_try in num_nodes:
+        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+
+        print("\n*** Running all faiss methods ***\n")
+        print("(asked for " + str(num_to_try) + " nodes)")
+
+        methods_to_run = scoring_with_faiss.all_faiss_methods
+
+        start = timer()
+        score_data.run_and_eval(adj_mat,
+                                true_labels_func=score_data.true_labels_for_expts_with_5pairs,
+                                method_spec=methods_to_run,
+                                evals_outfile=evals_outfile,
+                                pair_scores_outfile=scored_pairs_outfile,
+                                print_timing=True)
+        end = timer()
+        print("ran all " + str(len(methods_to_run)) + " methods in " + str(end - start) + " seconds")
+
+        print("Now running normal versions for comparison")
+        normal_versions = [x[:-6] for x in methods_to_run]
+        start = timer()
+        score_data.run_and_eval(adj_mat,
+                                true_labels_func=score_data.true_labels_for_expts_with_5pairs,
+                                method_spec=normal_versions,
+                                evals_outfile=evals_outfile,
+                                pair_scores_outfile=scored_pairs_outfile,
+                                print_timing=True, make_dense=True)
+        end = timer()
+        print("ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds")
+
+
+def resources_test():
     infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
 
     num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
@@ -110,86 +143,12 @@ def resources_test(run_all_implementations=True):
         print("ran all methods using dense matrix in " + str(end - start) + " seconds")
 
 
-def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_outfile=None):
-    infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
-
-    num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
-    for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
-
-        print("\n*** Running all faiss methods ***\n")
-        print("(asked for " + str(num_to_try) + " nodes)")
-        # adj_mat = score_data.load_adj_mat(adj_mat_infile)
-
-        # turns out fitting the exponential model is a first bottleneck <- not any more!
-        # methods_to_run = set(scoring_with_faiss.all_faiss_methods) - {'weighted_corr_exp_faiss'}
-        methods_to_run = scoring_with_faiss.all_faiss_methods
-
-        start = timer()
-        score_data.run_and_eval(adj_mat,
-                                true_labels_func=score_data.true_labels_for_expts_with_5pairs,
-                                method_spec=methods_to_run,
-                                evals_outfile=evals_outfile,
-                                pair_scores_outfile=scored_pairs_outfile,
-                                print_timing=True)
-        end = timer()
-        print("ran all " + str(len(methods_to_run)) + " methods in " + str(end - start) + " seconds")
-
-        print("Now running normal versions for comparison")
-        normal_versions = [x[:-6] for x in methods_to_run]
-        start = timer()
-        score_data.run_and_eval(adj_mat,
-                                true_labels_func=score_data.true_labels_for_expts_with_5pairs,
-                                method_spec=normal_versions,
-                                evals_outfile=evals_outfile,
-                                pair_scores_outfile=scored_pairs_outfile,
-                                print_timing=True, make_dense=True)
-        end = timer()
-        print("ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds")
-
-
-def test_all_faiss_methods(adj_mat_infile, evals_outfile, scored_pairs_outfile=None):
-    infile = "/Users/lfriedl/Documents/dissertation/real-data/brightkite/bipartite_adj.txt"
-
-    num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
-    for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
-
-    print("\n*** Running all faiss methods ***\n")
-    adj_mat = score_data.load_adj_mat(adj_mat_infile)
-
-    start = timer()
-    score_data.run_and_eval(adj_mat,
-                            true_labels_func=score_data.true_labels_for_expts_with_5pairs,
-                            method_spec=scoring_with_faiss.all_faiss_methods,
-                            evals_outfile=evals_outfile,
-                            pair_scores_outfile=scored_pairs_outfile,
-                            print_timing=True)
-    end = timer()
-    print("ran all " + str(len(scoring_with_faiss.all_faiss_methods)) + " methods in " + str(end - start) + " seconds")
-
-    print("Now running normal versions for comparison")
-    normal_versions = [x[:-6] for x in scoring_with_faiss.all_faiss_methods]
-    start = timer()
-    score_data.run_and_eval(adj_mat,
-                            true_labels_func=score_data.true_labels_for_expts_with_5pairs,
-                            method_spec=normal_versions,
-                            evals_outfile=evals_outfile,
-                            pair_scores_outfile=scored_pairs_outfile,
-                            print_timing=True, make_dense=True)
-    end = timer()
-    print("ran all " + str(len(normal_versions)) + " methods in " + str(end - start) + " seconds")
-
-
 
 if __name__ == "__main__":
     test_faiss_basic_calls()
-    test_score_wc_faiss()
-    # test_faiss_plus_normal()
+    # test_score_wc_faiss()
+    test_faiss_plus_normal()
     # resources_test()
-    test_all_faiss_methods(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
+    compare_timings_faiss_normal(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
                            evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
                            scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")
-    # compare_timings_faiss_normal(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
-    #                        evals_outfile="reality_appweek_50/python-out/evals-faiss-test.txt",
-    #                        scored_pairs_outfile = "reality_appweek_50/python-out/scoredPairs-faiss-test.csv.gz")

@@ -5,6 +5,9 @@ from future.utils import with_metaclass
 import numpy as np
 import os
 import gzip
+from tempfile import mkdtemp
+from timeit import default_timer as timer
+
 
 # factory for appropriate type of dictionary. Assumes we want to compute all pairs and store them in a square ndarray.
 def make_me_a_dict(num_indiv_items, data_dir = None, force_memmap = False):
@@ -22,7 +25,7 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     # use "int" and "float" to have printing handled right
-    def create_and_store_array(self, key):
+    def create_and_store_array(self, key, dtype):
         pass
 
     @abstractmethod
@@ -36,6 +39,10 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
     def getkeys(self):
         return(self.underlying_dict.keys())
 
+    def rename_method(self, old_name, new_name):
+        self.underlying_dict[new_name] = self.underlying_dict.pop(old_name)
+
+
     def to_csv_gz(self, outfile, pairs_generator, pg_arg):
         methods = sorted(self.getkeys())
         # get all arrays into 1 place (now, a dictionary)
@@ -44,10 +51,8 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
         header = ",".join(['item1', 'item2'] + methods)
         with gzip.open(outfile, 'wb') as fout:
             fout.write(header + "\n")
-            for (i, j, _, _, _, _) in pairs_generator:
+            for (i, j, _, _, _, _) in pairs_generator(pg_arg):
                 fout.write(",".join([str(i), str(j)] + [str(vals[m][i,j]) for m in methods]) + "\n")
-                # data = np.column_stack([i, j] + [vals[m][i,j] for m in range(len(methods))])
-                # np.savetxt(fout, data, fmt="%16f", delimiter=",")
 
 
 # Stores a dictionary of ndarrays
@@ -73,13 +78,22 @@ class normalInMemory(MagicDictionary):
 class onDiskDict(MagicDictionary):
     def __init__(self, data_dir, ndarray_shape):
         super(onDiskDict, self).__init__(ndarray_shape)
-        if not os.path.isdir(data_dir):
-            os.mkdir(data_dir)      # throws error if unhappy
+        self.data_dir_is_temp = False
+        if data_dir is None:
+            data_dir = mkdtemp()
+            self.data_dir_is_temp = True
+        else:
+            if not os.path.isdir(data_dir):
+                os.mkdir(data_dir)      # throws error if unhappy
         self.data_dir = data_dir
+        print("storing temp .dat files in " + data_dir)
         self.types = {}
 
+    def get_filename_for_key(self, key):
+        return(os.path.join(self.data_dir, key + ".dat"))
+
     def create_and_store_array(self, key, dtype=float):
-        filename = os.path.join(self.data_dir, key + ".dat")
+        filename = self.get_filename_for_key(key)
         data = np.memmap(filename, dtype=dtype, mode="w+", shape=self.ndarray_shape)
         self.underlying_dict[key] = filename
         self.types[key] = dtype  # must store, in order to open correctly later
@@ -117,10 +131,8 @@ class onDiskDict(MagicDictionary):
                 new_file = os.path.join(self.data_dir, m + ".2.dat")
                 infps.append(open(new_file, 'r'))
             fout.write("item1,item2," + ",".join(methods) + "\n")
-            next_item = infps[0].readline()
-            while len(next_item) > 0:
-                fout.write(",".join([next_item] + [f.readline() for f in infps[1:]]))
-                next_item = infps[0].readline()
+            for (i, j, _, _, _, _) in pairs_generator(pg_arg):
+                fout.write(",".join([str(i), str(j)] + [f.readline().rstrip() for f in infps]) + "\n")
 
             for fp in infps:
                 fp.close()
@@ -130,8 +142,14 @@ class onDiskDict(MagicDictionary):
 
 
     def __del__(self):
-        # remove the temp files to clean up
+        # clean up, removing the temp files
         for filename in self.underlying_dict.values():
             os.remove(filename)
-        # if self.retrieve_all is not None:
-        #     os.remove(self.retrieve_all)
+        if self.data_dir_is_temp:
+            os.rmdir(self.data_dir)
+
+    def rename_method(self, old_name, new_name):
+        self.types[new_name] = self.types.pop(old_name)
+        os.rename(self.get_filename_for_key(old_name), self.get_filename_for_key(new_name))
+        self.underlying_dict[new_name] = self.get_filename_for_key(new_name)
+        del self.underlying_dict[old_name]

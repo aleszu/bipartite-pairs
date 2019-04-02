@@ -7,6 +7,7 @@ sys.path.append("../expt-code")
 import score_data       # (got rid of clunky imp.load_source calls by adding other dirs to path in PyCharm Prefs)
 import scoring_methods
 import loc_data
+import magic_dictionary
 import pandas as pd
 import gzip
 from timeit import default_timer as timer
@@ -101,7 +102,7 @@ def test_adj_and_phi2():
 
 
 def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs_file_new, make_dense=False,
-                               flip_high_ps=False, run_all=0, prefer_faiss=False):
+                               flip_high_ps=False, run_all=1, prefer_faiss=False):
     """
     Starting from an adj matrix, score pairs (using current implementation) and compare to reference file run from R.
     Similar contents to score_data.run_and_eval().
@@ -131,7 +132,8 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs
     with gzip.open(scored_pairs_file_new, 'r') as fpin:
         scores_data_frame = pd.read_csv(fpin)
 
-    scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat), num_true_pairs=5)
+    scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat_preproc),
+                                                                      num_true_pairs=5)
     end = timer()
     print("ran " \
           + str(len(methods_to_run) + (len(mixed_pairs_sims) - 1 if 'mixed_pairs' in methods_to_run else 0)) \
@@ -209,7 +211,7 @@ def test_eval_aucs(scores_and_labels, aucs_file_R, tolerance = 1e-07):
 
 
 
-def test_only_wc(adj_mat_infile, scored_pairs_file_R):
+def test_only_wc(adj_mat_infile, scored_pairs_file_R, scored_pairs_file_new):
     """
     Like test_pair_scores_against_R(), but checks scores & timing of the function simple_only_weighted_corr().
     (This was the first scoring method I implemented using a transform of the adj_matrix.)
@@ -225,8 +227,14 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R):
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
     pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
-    wc_frame = scoring_methods.extra_implementations.simple_only_weighted_corr(score_data.gen_all_pairs, adj_mat_preproc,
+    scores_storage = magic_dictionary.make_me_a_dict(adj_mat_preproc.shape[0])
+    scoring_methods.extra_implementations.simple_only_weighted_corr(score_data.gen_all_pairs, adj_mat_preproc,
+                                                                    scores_storage.create_and_store_array("weighted_corr"),
                                                                     pi_vector_preproc, print_timing=True)
+    scores_storage.to_csv_gz(scored_pairs_file_new, score_data.gen_all_pairs, adj_mat_preproc)
+    with gzip.open(scored_pairs_file_new, 'r') as fpin:
+        wc_frame = pd.read_csv(fpin)
+
     with gzip.open(scored_pairs_file_R, 'r') as fpin:
         scores_data_frame_R = pd.read_csv(fpin)
 
@@ -334,7 +342,8 @@ if __name__ == "__main__":
     tmp_scored_pairs_file_new = 'reality_appweek_50/tmp.scoredPairs.csv.gz'
     # Test a specific implementation of weighted_corr
     test_only_wc(adj_mat_infile ="reality_appweek_50/data50_adjMat.mtx.gz",
-                 scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz")
+                 scored_pairs_file_R = "reality_appweek_50/data50-inference-allto6.scoredPairs.csv.gz",
+                 scored_pairs_file_new = tmp_scored_pairs_file_new)
 
     # Test reality mining example
     print("\nReality mining, data set #50 -- as sparse matrix")
@@ -385,3 +394,4 @@ if __name__ == "__main__":
     test_all_methods_no_changes(adj_mat_infile="reality_appweek_50/data50_adjMat.mtx.gz",
                                 results_dir="reality_appweek_50/python-out", prefer_faiss=True)
     # todo: set up this call for additional data sets
+    # note: can change default arg of test_pair_scores_against_R() to run extra implementations
