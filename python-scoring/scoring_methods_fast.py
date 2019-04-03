@@ -100,13 +100,13 @@ def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
 
     rowsums = np.asarray(adj_matrix.sum(axis=1)).squeeze()
     # create a square matrix with rowsums along each row
-    rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
+    # rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
 
     if back_compat:
-        scores_out[:] = (ss_scores / (rowsums_mat + rowsums_mat.transpose() - ss_scores))[:]
+        scores_out[:] = (ss_scores.astype('float') / (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - ss_scores))[:]
     else:
         scores_out[:] = ((ss_scores * adj_matrix.shape[1]).round() /
-                         (rowsums_mat + rowsums_mat.transpose() - (ss_scores * adj_matrix.shape[1]).round()))[:]
+                         (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - (ss_scores * adj_matrix.shape[1]).round()))[:]
     # todo? check for and fix any Nan/Inf's, which would come where rowsums_mat + rowsums_mat.transpose() == 0
 
     end = timer()
@@ -130,14 +130,14 @@ def hamming_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
 
     rowsums = np.asarray(adj_matrix.sum(axis=1)).squeeze()
     # create a square matrix with rowsums along each row
-    rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
+    # rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
 
     if back_compat:
-        scores_out[:] = (rowsums_mat + rowsums_mat.transpose() - 2 * ss_scores)[:]
+        scores_out[:] = (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - 2 * ss_scores)[:]
     else:  # keeping things as integers until the last step, to preserve floating point precision
         scores_out[:] = ((adj_matrix.shape[1] -
-                         (rowsums_mat + rowsums_mat.transpose() - 2 * (ss_scores * adj_matrix.shape[1]).round()))
-                         / float(adj_matrix.shape[1]))[:]
+                         (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - 2 * (ss_scores * adj_matrix.shape[1]).round())
+                          ) / float(adj_matrix.shape[1]))[:]
 
     end = timer()
     if print_timing:

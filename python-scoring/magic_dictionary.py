@@ -110,10 +110,6 @@ class onDiskDict(MagicDictionary):
         return(np.memmap(self.underlying_dict[key], mode="r", shape=self.ndarray_shape, dtype=self.types[key]))
 
     def retrieve_all_arrays(self, methods):
-        # self.retrieve_all = os.path.join(self.data_dir, "_retrieve_all" + ".dat")
-        # out_array = np.memmap(self.retrieve_all, dtype=float, mode="w+", shape=[len(methods)] + self.ndarray_shape)
-        # arrays = [self.retrieve_array(m) for m in methods]
-        # return(np.stack(arrays, axis=0, out=out_array))
         return({m:self.retrieve_array(m) for m in methods})
 
     # should be better for conserving RAM

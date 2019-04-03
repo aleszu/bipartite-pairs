@@ -38,7 +38,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
     if all_named_args.get('mixed_pairs_sims', None) == 'standard':
         all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
 
-    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], force_memmap=True)
+    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], force_memmap=False)
 
     which_methods, methods_for_faiss = separate_faiss_methods(which_methods, prefer_faiss, sparse.isspmatrix(adj_matrix))
     if len(methods_for_faiss):
@@ -326,3 +326,8 @@ def wc_terms(pi_vector, num_affils):
 
 # Note: it's seeming like dense + memmap is going to be preferred over sparse matrix methods. I.e., it's worth using disk
 # space to save time. Do I want to drop support for sparse matrices?
+
+# According to
+# https://software.intel.com/en-us/articles/large-matrix-operations-with-scipy-and-numpy-tips-and-best-practices,
+# expensive matrix operations in numpy and scipy are optimized for order='F'. But FAISS requires the other kind
+# (default, 'C'), and anecdotally, using adj_matrix of order 'F' seemed slower, if anything.
