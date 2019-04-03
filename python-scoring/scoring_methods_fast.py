@@ -89,7 +89,7 @@ def simple_only_pearson(pairs_generator, adj_matrix, scores_out, print_timing=Fa
 def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_out, print_timing = False, back_compat = False):
     start = timer()
 
-    if scores_storage.underlying_dict.has_key("shared_size"):
+    if "shared_size" in scores_storage.underlying_dict:
         ss_scores = scores_storage.retrieve_array("shared_size")
     else:
         # Betting that computing the scores first is faster than doing without them
@@ -119,7 +119,7 @@ def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
 def hamming_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_out, print_timing = False, back_compat = False):
     start = timer()
 
-    if scores_storage.underlying_dict.has_key("shared_size"):
+    if "shared_size" in scores_storage.underlying_dict:
         ss_scores = scores_storage.retrieve_array("shared_size")
     else:
         # Betting that computing the scores first is faster than doing without them

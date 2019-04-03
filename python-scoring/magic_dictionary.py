@@ -56,7 +56,7 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
         vals = self.retrieve_all_arrays(methods)
 
         header = ",".join(['item1', 'item2'] + methods)
-        with gzip.open(outfile, 'wb') as fout:
+        with gzip.open(outfile, 'wt') as fout:
             fout.write(header + "\n")
             for (i, j, _, _, _, _) in pairs_generator(pg_arg):
                 fout.write(",".join([str(i), str(j)] + [str(vals[m][i,j]) for m in methods]) + "\n")
@@ -128,7 +128,7 @@ class onDiskDict(MagicDictionary):
                     fout.write(str(data[i,j]) + "\n")
 
         # join into a csv file
-        with gzip.open(outfile, 'wb') as fout:
+        with gzip.open(outfile, 'wt') as fout:
             infps = []
             for m in methods:
                 new_file = os.path.join(self.data_dir, m + ".2.dat")
@@ -146,7 +146,7 @@ class onDiskDict(MagicDictionary):
 
     def __del__(self):
         # clean up, removing the temp files
-        for filename in self.underlying_dict.values():
+        for filename in list(self.underlying_dict.values()):
             os.remove(filename)
         if self.data_dir_is_temp:
             os.rmdir(self.data_dir)
