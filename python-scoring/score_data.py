@@ -12,18 +12,18 @@ import scoring_methods
 import bipartite_fitting
 import bipartite_likelihood
 
-
-# If run from the command line, script simply reads data file, saves pairs with scores.
+# This file: If run from the command line, script simply reads data file, saves pairs with scores.
 # Use run_and_eval() for expts: options for loading and manipulating phi, know true pairs and compute AUCs.
+
 
 # Iterates through all pairs of matrix rows, in the form (i, j) where i < j
 # Rows output are always of type numpy.ndarray()
 # Returns (row1_index, row2_index, row1_label (differs from row1_index if row_labels param sent), row2_label, row1, row2)
-# row "labels" are actually integers
+# (although the row "labels" this codebase creates are actually integers)
 def gen_all_pairs(my_adj_mat, row_labels=None):
     num_rows = my_adj_mat.shape[0]
     is_sparse = sparse.isspmatrix(my_adj_mat)
-    is_numpy_matrix = (type(my_adj_mat) == np.matrix)
+    is_numpy_matrix = (type(my_adj_mat) == np.matrix)   # this type results from operations using sparse + ndarray
     for i in range(num_rows):
         if is_sparse:
             rowi = my_adj_mat.getrow(i).toarray()[0]  # toarray() gives 2-d matrix, [0] to flatten
@@ -43,6 +43,25 @@ def gen_all_pairs(my_adj_mat, row_labels=None):
                 yield (i, j, i, j, rowi, rowj)
             else:
                 yield (i, j, row_labels[i], row_labels[j], rowi, rowj)
+
+# For when we're just looping over indices, don't need to access rows
+# note: this returns a generator function. in contrast, gen_all_pairs is a generator function and returns a generator.
+def ij_gen(max):
+    return((i,j, 0, 0, 0, 0) for i in range(max) for j in range((i+1),max))
+
+
+# Convention for all my expt data: the true pairs are items (1,2), (3,4), etc.
+# These two functions each take a generator function and return a list.
+def get_true_labels_expt_data(pairs_generator, num_true_pairs):
+    labels = []
+    for (row_idx1, row_idx2, _, _, _, _) in pairs_generator:
+        label = True if (row_idx2 < 2 * num_true_pairs and row_idx1 == row_idx2 - 1 and row_idx2 % 2) else False
+        labels.append(label)
+    return labels
+
+
+def true_labels_for_expts_with_5pairs(pairs_generator):
+    return get_true_labels_expt_data(pairs_generator, 5)
 
 
 # Infile must be in "matrix market" format and gzipped
@@ -102,18 +121,6 @@ def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
 
     return pi_vector_mod, adj_mat_mod.tocsr()
 
-
-# Convention for all my expt data: the true pairs are items (1,2), (3,4), etc.
-def get_true_labels_expt_data(pairs_generator, num_true_pairs):
-    labels = []
-    for (row_idx1, row_idx2, _, _, pair_x, pair_y) in pairs_generator:
-        label = True if (row_idx2 < 2 * num_true_pairs and row_idx1 == row_idx2 - 1 and row_idx2 % 2) else False
-        labels.append(label)
-    return labels
-
-
-def true_labels_for_expts_with_5pairs(pairs_generator):
-    return get_true_labels_expt_data(pairs_generator, 5)
 
 # (max_iter_biment moved here to be easier to change. we did hit ~51k iterations for one matrix, dims 969 x 42k)
 def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False, max_iter_biment=5000):
@@ -177,10 +184,12 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
     if row_labels is None:
         pairs_generator = gen_all_pairs
+        ij_gen_for_labels = ij_gen(adj_mat.shape[0])
     else:
         def my_pairs_gen(adj_mat):
             return gen_all_pairs(adj_mat, row_labels)
         pairs_generator = my_pairs_gen
+        ij_gen_for_labels = my_pairs_gen    # true labels generator may need the labels
 
     scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
                                                     outfile_csv_gz=pair_scores_outfile,
@@ -196,7 +205,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
         scores_data_frame = pd.read_csv(fpin)
 
     method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
-    scores_data_frame['label'] = list(map(int, true_labels_func(pairs_generator(adj_mat))))
+    scores_data_frame['label'] = list(map(int, true_labels_func(ij_gen_for_labels)))
 
     # round pair scores at 15th decimal place so we don't get spurious diffs in AUCs when replicating
     scores_data_frame = scores_data_frame.round(decimals={method:15 for method in method_names})
@@ -213,7 +222,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
         evals["auc_" + method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
 
     for model_type, graph_model in graph_models.items():
-        (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat)
+        (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat, print_timing=print_timing)
         evals["loglikelihood_" + model_type] = loglik
         evals["akaike_" + model_type] = aic
 
@@ -268,9 +277,20 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
     print('scored pairs saved to ' + pair_scores_outfile)
 
 
+def get_item_likelihoods(adj_mat_file, exponential_model=True):
+    adj_mat = load_adj_mat(adj_mat_file)
+    pi_vector = learn_pi_vector(adj_mat)
+    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat)
+    graph_models = learn_graph_models(adj_mat, bernoulli=(not exponential_model),
+                                      pi_vector=pi_vector, exponential=exponential_model)
+    (tot_loglik, aic, item_LLs) = graph_models.values()[0].likelihoods(adj_mat)
+    print("learned " + graph_models.keys()[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
+    return item_LLs
+
+
 # Utility function: doesn't look at pairs, simply fits a model to the graph and prints the log likelihoods for each
 # item. Runs both Bernoulli and exponential models.
-def item_likelihoods(adj_mat_file, loglik_out_csv, flip_high_ps=False):
+def write_item_likelihoods(adj_mat_file, loglik_out_csv, flip_high_ps=False):
     adj_mat = load_adj_mat(adj_mat_file)
     pi_vector = learn_pi_vector(adj_mat)
     pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)

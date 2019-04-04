@@ -38,7 +38,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
     if all_named_args.get('mixed_pairs_sims', None) == 'standard':
         all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
 
-    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], force_memmap=False)
+    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0])
 
     which_methods, methods_for_faiss = separate_faiss_methods(which_methods, prefer_faiss, sparse.isspmatrix(adj_matrix))
     if len(methods_for_faiss):

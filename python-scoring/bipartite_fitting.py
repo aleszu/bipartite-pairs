@@ -108,10 +108,10 @@ def learn_biment(adj_matrix, max_iter=5000):
     X, Y, X_bak, Y_bak = BiMent_solver(item_degrees, affil_degrees, tolerance=1e-5, max_iter=max_iter)
     #phi_ia = X[:, None] * Y / (1 + X[:, None] * Y)  # P(edge) matrix
 
-    if X_bak is None and Y_bak is None:
-        converge = False
-    else:
-        converge = True
+    # if X_bak is None and Y_bak is None:
+    #     converge = False
+    # else:
+    #     converge = True
 
     # the model is an exponential with item_param[i] = ln(X[i]) and affil_param[j] = ln(Y[j])
     expMod = bipartite_likelihood.exponentialModel(adj_matrix.shape[0], adj_matrix.shape[1])

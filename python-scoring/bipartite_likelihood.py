@@ -4,6 +4,7 @@ from scipy import sparse
 import numpy as np
 from abc import ABCMeta, abstractmethod  # enables abstract base classes
 from future.utils import with_metaclass
+from timeit import default_timer as timer
 
 # use: my_model.akaike(adj_matrix)
 
@@ -58,20 +59,24 @@ class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
 
     # For efficiency, have a single function compute and return indiv item log likelihoods, total data
     # log likelihood (higher is better fit), and akaike (lower is better fit)
-    def likelihoods(self, my_adj_mat):
+    def likelihoods(self, my_adj_mat, print_timing=False):
+        start = timer()
+        # code borrowed from gen_all_pairs, to handle adj_matrices of different classes
+        is_sparse = sparse.isspmatrix(my_adj_mat)
+        # is_numpy_matrix = (type(my_adj_mat) == np.matrix)
+        # if (not is_sparse):     #and (not is_numpy_matrix):
+        #     return self.likelihoods_dense(my_adj_mat, print_timing)
+
         num_rows = my_adj_mat.shape[0]
         item_LLs = np.zeros(num_rows)
         loglik = 0
-        # code borrowed from gen_all_pairs, to handle adj_matrices of different classes
-        is_sparse = sparse.isspmatrix(my_adj_mat)
-        is_numpy_matrix = (type(my_adj_mat) == np.matrix)
         for i in range(num_rows):
             if is_sparse:
                 rowi = my_adj_mat.getrow(i).toarray()[0]  # toarray() gives 2-d matrix, [0] to flatten
             else:  # already an ndarray(), possibly a matrix()
                 rowi = my_adj_mat[i,]
-                if is_numpy_matrix:
-                    rowi = rowi.A1
+                # if is_numpy_matrix:
+                #     rowi = rowi.A1
 
             # compute scores for edges that are present and absent, respectively
             score = rowi.dot(self.loglik_edges_present(i)) + (1 - rowi).dot(self.loglik_edges_absent(i))
@@ -79,7 +84,30 @@ class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
             item_LLs[i] = score
 
         aic = 2 * (self.get_num_params() - loglik)
+        end = timer()
+        if print_timing:
+            print("computed likelihoods in " + str(end - start) + " seconds")
         return (loglik, aic, item_LLs)
+
+    # inactive, since slower than the regular version
+    def likelihoods_dense(self, my_adj_mat, print_timing=False):
+        start = timer()
+        # log(edge_probs) dot adj_mat  --> LL per item from edges present
+        # log(1 - edge_probs) * (1 - adj_mat) --> LL per item from edges absent
+        # I want each rowi.dot(rowi). Not matrix multiplication, which is what happens with matrix.dot(matrix).
+        # So use rowsums of element-wise multiplication.
+        LL_present = np.sum(np.log(self.edge_prob_matrix()) * my_adj_mat, axis=1)
+        LL_absent = np.sum(np.log(1 - self.edge_prob_matrix()) * (1 - my_adj_mat), axis=1)
+        item_LLs = LL_present + LL_absent
+        loglik = np.sum(item_LLs)
+        aic = 2 * (self.get_num_params() - loglik)
+
+        end = timer()
+        if print_timing:
+            print("computed likelihoods (w/matrices) in " + str(end - start) + " seconds")
+
+        return (loglik, aic, item_LLs)
+
 
     # higher is better!
     def loglikelihood(self, my_adj_mat):
@@ -102,6 +130,10 @@ class bernoulliModel(bipartiteGraphModel):
 
     def loglik_edges_absent(self, item_idx):
         return self.loglik_absent
+
+    # returns 1 edge_prob_row, so caller must broadcast it to the desired number of rows
+    def edge_prob_matrix(self):
+        return self.affil_params
 
 
 class exponentialModel(bipartiteGraphModel):

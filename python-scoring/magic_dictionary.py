@@ -7,7 +7,7 @@ import os
 import gzip
 from tempfile import mkdtemp
 from timeit import default_timer as timer
-
+import score_data
 
 # factory for appropriate type of dictionary. Assumes we want to compute all pairs and store them in a square ndarray.
 def make_me_a_dict(num_indiv_items, data_dir = None, force_memmap = False):
@@ -25,7 +25,6 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
         self.hidden_items = set()
 
     @abstractmethod
-    # use "int" and "float" to have printing handled right
     def create_and_store_array(self, key, dtype):
         pass
 
@@ -54,11 +53,15 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
         methods = sorted(self.getkeys())
         # get all arrays into 1 place (now, a dictionary)
         vals = self.retrieve_all_arrays(methods)
+        if pairs_generator == score_data.gen_all_pairs:
+            gen = score_data.ij_gen(pg_arg.shape[0])
+        else:
+            gen = pairs_generator(pg_arg)
 
         header = ",".join(['item1', 'item2'] + methods)
         with gzip.open(outfile, 'wt') as fout:
             fout.write(header + "\n")
-            for (i, j, _, _, _, _) in pairs_generator(pg_arg):
+            for (i, j, _, _, _, _) in gen:
                 fout.write(",".join([str(i), str(j)] + [str(vals[m][i,j]) for m in methods]) + "\n")
 
 
@@ -122,9 +125,14 @@ class onDiskDict(MagicDictionary):
         for m in methods:
             new_file = os.path.join(self.data_dir, m + ".2.dat")
             data = self.retrieve_array(m)
+            if pairs_generator == score_data.gen_all_pairs:
+                gen = score_data.ij_gen(pg_arg.shape[0])
+            else:
+                gen = pairs_generator(pg_arg)
+
             with open(new_file, 'w') as fout:
                 # fout.write(m + "\n")
-                for (i,j,_,_,_,_) in pairs_generator(pg_arg):
+                for (i,j,_,_,_,_) in gen:
                     fout.write(str(data[i,j]) + "\n")
 
         # join into a csv file
@@ -134,7 +142,11 @@ class onDiskDict(MagicDictionary):
                 new_file = os.path.join(self.data_dir, m + ".2.dat")
                 infps.append(open(new_file, 'r'))
             fout.write("item1,item2," + ",".join(methods) + "\n")
-            for (i, j, _, _, _, _) in pairs_generator(pg_arg):
+            if pairs_generator == score_data.gen_all_pairs:
+                gen = score_data.ij_gen(pg_arg.shape[0])
+            else:
+                gen = pairs_generator(pg_arg)
+            for (i, j, _, _, _, _) in gen:
                 fout.write(",".join([str(i), str(j)] + [f.readline().rstrip() for f in infps]) + "\n")
 
             for fp in infps:
