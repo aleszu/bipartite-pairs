@@ -238,7 +238,22 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
 def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=False,
                  make_dense=True, row_labels=None, print_timing=False, learn_exp_model=False,
-                 prefer_faiss=True):
+                 prefer_faiss=True, integer_ham_ssize=False):
+    """
+
+    :param adj_mat_file: function expects a file in matrix market format, optionally gzipped
+    :param method_spec: list of method names (see scoring_methods.all_defined_methods for all choices)
+    :param pair_scores_outfile:
+    :param flip_high_ps:
+    :param make_dense: If false, keep matrix in sparse format. Uses less RAM, but far slower.
+    :param row_labels: Array of labels, in case 0:(num_rows(adj_mat)-1) isn't their usual naming/numbering
+    :param print_timing:
+    :param learn_exp_model: fit and compute likelihoods for exponential graph model even if not using it for scoring
+    :param prefer_faiss: when the FAISS library is installed, use it (for the methods implemented in it)
+    :param integer_ham_ssize: hamming (distance) and shared_size are returned as integers (saves space and easier to
+                              interpret). The default changes them both to similarities between 0 and 1.
+    :return: (no return value. instead, scores are saved to pair_scores_outfile.)
+    """
 
     adj_mat = load_adj_mat(adj_mat_file)
     pi_vector = learn_pi_vector(adj_mat)
@@ -264,7 +279,6 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
     else:
         def my_pairs_gen(adj_mat):
             return gen_all_pairs(adj_mat, row_labels)
-
         pairs_generator = my_pairs_gen
 
     scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
@@ -273,7 +287,7 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
                                                     mixed_pairs_sims='standard',
                                                     exp_model=graph_models.get('exponential', None),
                                                     print_timing=print_timing,
-                                                    prefer_faiss=prefer_faiss)
+                                                    prefer_faiss=prefer_faiss, back_compat=integer_ham_ssize)
     print('scored pairs saved to ' + pair_scores_outfile)
 
 
