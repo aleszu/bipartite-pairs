@@ -221,7 +221,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     for method in method_names:
         evals["auc_" + method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
 
-    for model_type, graph_model in graph_models.items():
+    for model_type, graph_model in list(graph_models.items()):
         (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat, print_timing=print_timing)
         evals["loglikelihood_" + model_type] = loglik
         evals["akaike_" + model_type] = aic
@@ -265,7 +265,7 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
                      ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
     graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
 
-    for model_type, graph_model in graph_models.items():
+    for model_type, graph_model in list(graph_models.items()):
         (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat)
         print("loglikelihood " + model_type + ": " + str(loglik))
         print("akaike " + model_type + ": " + str(aic))
@@ -297,8 +297,8 @@ def get_item_likelihoods(adj_mat_file, exponential_model=True):
     pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat)
     graph_models = learn_graph_models(adj_mat, bernoulli=(not exponential_model),
                                       pi_vector=pi_vector, exponential=exponential_model)
-    (tot_loglik, aic, item_LLs) = graph_models.values()[0].likelihoods(adj_mat)
-    print("learned " + graph_models.keys()[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
+    (tot_loglik, aic, item_LLs) = list(graph_models.values())[0].likelihoods(adj_mat)
+    print("learned " + list(graph_models.keys())[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
     return item_LLs
 
 
