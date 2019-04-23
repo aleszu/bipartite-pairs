@@ -8,28 +8,34 @@ import scoring_methods_fast
 import extra_implementations
 import transforms_for_dot_prods
 import magic_dictionary
+from functools import partial
 
 all_defined_methods = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson',
                        'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs',
                        'weighted_corr', 'weighted_corr_exp']
 
-def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None, print_timing=False,
-                run_all_implementations=False, prefer_faiss=False, **all_named_args):
+def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None, indices_gen=None, print_timing=False,
+                run_all_implementations=False, prefer_faiss=False, on_disk_memory = None, **all_named_args):
     """
     :param pairs_generator: a function that takes adj_matrix as an argument
     :param adj_matrix:
     :param which_methods:
     :param outfile_csv_gz:
+    :param indices_gen: fast alternative to pairs_generator, function that takes no args
     :param print_timing:
     :param run_all_implementations: can use False (default), True or 1 for more, or 2 to do even the slow ones
     :param prefer_faiss:
+    :param on_disk_memory: memmap or not. Default lets magic_dictionary choose based on adj_mat.shape[0].
     :param all_named_args:
         Required args for methods:
         'pi_vector' needed for cosineIDF, weighted_corr, shared_weight11, shared_weight1100, adamic_adar, newman
         'num_docs' needed for adamic_adar and newman
         'mixed_pairs_sims' needed for mixed_pairs
         'exp_model' needed for wc_exp
-    :return: Returns a table of scores with one column per method.
+        Optional args:
+        'back_compat' makes shared_size and hamming (distance!) use integers; default computes int / adj_mat.shape[1]
+            and hamming similarity
+    :return: Saves a table of scores with one column per method.
     Direction of returned scores: higher for true pairs.
     """
 
@@ -38,7 +44,7 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
     if all_named_args.get('mixed_pairs_sims', None) == 'standard':
         all_named_args['mixed_pairs_sims'] = (.1, .01, .001)
 
-    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0])
+    scores_storage = magic_dictionary.make_me_a_dict(adj_matrix.shape[0], on_disk = on_disk_memory)
 
     which_methods, methods_for_faiss = separate_faiss_methods(which_methods, prefer_faiss, sparse.isspmatrix(adj_matrix))
     if len(methods_for_faiss):
@@ -151,11 +157,11 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
         back_compat = all_named_args.get('back_compat', False)
         out_data = scores_storage.create_and_store_array('hamming', dtype = int if back_compat else float)
         scoring_methods_fast.hamming_from_sharedsize(pairs_generator, adj_matrix, scores_storage, out_data,
-                                print_timing=print_timing, back_compat=back_compat)
+                                print_timing=print_timing, back_compat=all_named_args.get('back_compat', False))
     if 'jaccard' in which_methods:
         out_data = scores_storage.create_and_store_array('jaccard')
         scoring_methods_fast.jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, out_data,
-                                print_timing=print_timing, back_compat=back_compat)
+                                print_timing=print_timing, back_compat=all_named_args.get('back_compat', False))
     if 'pearson' in which_methods:
         out_data = scores_storage.create_and_store_array('pearson')
         scoring_methods_fast.simple_only_pearson(pairs_generator, adj_matrix, out_data, print_timing=print_timing)
@@ -168,20 +174,13 @@ def score_pairs(pairs_generator, adj_matrix, which_methods, outfile_csv_gz=None,
 
     if outfile_csv_gz is not None:
         start = timer()
-        scores_storage.to_csv_gz(outfile_csv_gz, pairs_generator, adj_matrix)
+        scores_storage.to_csv_gz(outfile_csv_gz,
+                                 indices_gen if indices_gen is not None else partial(pairs_generator, adj_matrix))
         end = timer()
         if print_timing:
             print("saved scores to outfile " + outfile_csv_gz + ": " + str(end - start) + " secs")
     elif print_timing:
         print("Throwing away scores, since no outfile was specified")
-
-
-def item_ids(pairs_generator):
-    item1, item2 = [], []
-    for (_, _, item1_id, item2_id, _, _) in pairs_generator:
-        item1.append(item1_id)
-        item2.append(item2_id)
-    return(item1, item2)
 
 
 def separate_faiss_methods(which_methods, faiss_preferred, is_sparse):

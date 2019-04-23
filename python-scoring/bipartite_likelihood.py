@@ -6,7 +6,7 @@ from abc import ABCMeta, abstractmethod  # enables abstract base classes
 from future.utils import with_metaclass
 from timeit import default_timer as timer
 
-# use: my_model.akaike(adj_matrix)
+# todo: check if num_params is correct for akaike. Might need to be len(affil_params) - 1 and len(item_params) - 1.
 
 class bipartiteGraphModel(with_metaclass(ABCMeta, object)):
     has_affil_params = False

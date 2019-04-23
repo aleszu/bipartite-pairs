@@ -10,8 +10,13 @@ from timeit import default_timer as timer
 import score_data
 
 # factory for appropriate type of dictionary. Assumes we want to compute all pairs and store them in a square ndarray.
-def make_me_a_dict(num_indiv_items, data_dir = None, force_memmap = False):
-    if num_indiv_items > 3000 or force_memmap:    # 3000 items --> ~10 M entries in matrix
+def make_me_a_dict(num_indiv_items, data_dir = None, on_disk = None):
+    if on_disk is not None:
+        want_memmap = on_disk
+    else:
+        want_memmap = num_indiv_items > 3000    # 3000 items --> ~10 M entries in matrix
+
+    if want_memmap:
         return(onDiskDict(data_dir, (num_indiv_items, num_indiv_items)))
     else:
         return(normalInMemory((num_indiv_items, num_indiv_items)))
@@ -49,20 +54,16 @@ class MagicDictionary(with_metaclass(ABCMeta, object)):
         self.underlying_dict[new_name] = self.underlying_dict.pop(old_name)
 
 
-    def to_csv_gz(self, outfile, pairs_generator, pg_arg):
+    def to_csv_gz(self, outfile, indices_generator_fn):
         methods = sorted(self.getkeys())
         # get all arrays into 1 place (now, a dictionary)
         vals = self.retrieve_all_arrays(methods)
-        if pairs_generator == score_data.gen_all_pairs:
-            gen = score_data.ij_gen(pg_arg.shape[0])
-        else:
-            gen = pairs_generator(pg_arg)
 
         header = ",".join(['item1', 'item2'] + methods)
         with gzip.open(outfile, 'wt') as fout:
             fout.write(header + "\n")
-            for (i, j, _, _, _, _) in gen:
-                fout.write(",".join([str(i), str(j)] + [str(vals[m][i,j]) for m in methods]) + "\n")
+            for (i, j, labeli, labelj, _, _) in indices_generator_fn():
+                fout.write(",".join([str(labeli), str(labelj)] + [str(vals[m][i,j]) for m in methods]) + "\n")
 
 
 # Stores a dictionary of ndarrays
@@ -116,44 +117,38 @@ class onDiskDict(MagicDictionary):
         return({m:self.retrieve_array(m) for m in methods})
 
     # should be better for conserving RAM
-    def to_csv_gz(self, outfile, pairs_generator, pg_arg):
+    def to_csv_gz(self, outfile, indices_generator_fn):
         methods = sorted(self.getkeys())
         if len(methods) <= 1:
-            super(onDiskDict, self).to_csv_gz(outfile, pairs_generator, pg_arg)
+            super(onDiskDict, self).to_csv_gz(outfile, indices_generator_fn)
+            return
 
         # for each method, re-save only the scores we want, to a 1-col text file
         for m in methods:
-            new_file = os.path.join(self.data_dir, m + ".2.dat")
+            new_file = os.path.join(self.data_dir, m + ".2.txt")
             data = self.retrieve_array(m)
-            if pairs_generator == score_data.gen_all_pairs:
-                gen = score_data.ij_gen(pg_arg.shape[0])
-            else:
-                gen = pairs_generator(pg_arg)
 
             with open(new_file, 'w') as fout:
                 # fout.write(m + "\n")
-                for (i,j,_,_,_,_) in gen:
+                for (i,j,_,_,_,_) in indices_generator_fn():
                     fout.write(str(data[i,j]) + "\n")
 
         # join into a csv file
         with gzip.open(outfile, 'wt') as fout:
             infps = []
             for m in methods:
-                new_file = os.path.join(self.data_dir, m + ".2.dat")
+                new_file = os.path.join(self.data_dir, m + ".2.txt")
                 infps.append(open(new_file, 'r'))
             fout.write("item1,item2," + ",".join(methods) + "\n")
-            if pairs_generator == score_data.gen_all_pairs:
-                gen = score_data.ij_gen(pg_arg.shape[0])
-            else:
-                gen = pairs_generator(pg_arg)
-            for (i, j, _, _, _, _) in gen:
+
+            for (_, _, i, j, _, _) in indices_generator_fn():
                 fout.write(",".join([str(i), str(j)] + [f.readline().rstrip() for f in infps]) + "\n")
 
             for fp in infps:
                 fp.close()
 
         for m in methods:
-            os.remove(os.path.join(self.data_dir, m + ".2.dat"))
+            os.remove(os.path.join(self.data_dir, m + ".2.txt"))
 
 
     def __del__(self):

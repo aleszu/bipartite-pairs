@@ -1,17 +1,19 @@
 from __future__ import print_function
 from builtins import zip, str
-import sys
-sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
-sys.path.append("../expt-code")
-
-import score_data       # (got rid of clunky imp.load_source calls by adding other dirs to path in PyCharm Prefs)
-import scoring_methods
-import loc_data
-import magic_dictionary
 import pandas as pd
 import gzip
 from timeit import default_timer as timer
 from sklearn.metrics import roc_auc_score, roc_curve, auc
+import sys
+sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
+sys.path.append("../expt-code")
+
+import score_data       # (got rid of clunky imp.load_source calls added for PyCharm by adding other dirs to path in prefs)
+import scoring_methods
+import loc_data
+import magic_dictionary
+import expts_labeled_data
+
 
 
 mapping_from_R_methods = {"label": "label", "m": "shared_size", "d": 'hamming', "one_over_log_p_m11": 'shared_weight11',
@@ -46,12 +48,12 @@ def test_adj_and_phi():
     adj_mat_infile = "ng_aa_data1/data15_adj_mat.mtx.gz"
 
     # manually constructing these as I go along, using my existing R code in experimentRunner.R
-    pi_vector_learned_R = score_data.load_pi_from_file("ng_aa_data1/data15.dataphi.txt.gz")
-    pi_vector_preproc_R = score_data.load_pi_from_file("ng_aa_data1/data15.dataphipreproc.txt.gz")
+    pi_vector_learned_R = expts_labeled_data.load_pi_from_file("ng_aa_data1/data15.dataphi.txt.gz")
+    pi_vector_preproc_R = expts_labeled_data.load_pi_from_file("ng_aa_data1/data15.dataphipreproc.txt.gz")
 
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     # Quirk from R: it saved floating point data with 7 digits of precision (see getOptions("digits") and format()).
     # Implication: if we want to ever use those phi files, should re-convert with higher precision.
@@ -71,9 +73,9 @@ def test_adj_and_phi():
     assert(max(abs(pi_vector_preproc - pi_vector_preproc_R)) < 1e-07)
 
     # test flipping
-    pi_vector_flipped_R = score_data.load_pi_from_file("ng_aa_data1/data15.dataphiflipped.txt.gz")
+    pi_vector_flipped_R = expts_labeled_data.load_pi_from_file("ng_aa_data1/data15.dataphiflipped.txt.gz")
     adj_mat_flipped_R = score_data.load_adj_mat("ng_aa_data1/data15.adj_mat_flipped.mtx.gz")
-    pi_vector_flipped, adj_mat_flipped = score_data.adjust_pi_vector(pi_vector_learned, adj_mat, flip_high_ps=True)
+    pi_vector_flipped, adj_mat_flipped = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat, flip_high_ps=True)
     # Expect the respective versions to match
     assert(pi_vector_flipped.shape == pi_vector_preproc.shape)
     assert(max(abs(pi_vector_flipped - pi_vector_flipped_R)) < 1e-07)
@@ -91,11 +93,11 @@ def test_adj_and_phi2():
 
     # Check that I can learn phi from the adjacency matrix and end up with the version in the inference file
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
-    pi_vector_preproc_R = score_data.load_pi_from_file("reality_appweek_50/data50-inference-allto6.phi.csv.gz")
+    pi_vector_preproc_R = expts_labeled_data.load_pi_from_file("reality_appweek_50/data50-inference-allto6.phi.csv.gz")
 
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     # Expect pi_vector_preproc to match pi_vector_preproc_R
     assert(max(abs(pi_vector_preproc - pi_vector_preproc_R)) < 1e-07)
@@ -116,7 +118,7 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs
     # Read adj data and prep pi_vector
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat, flip_high_ps=flip_high_ps)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat, flip_high_ps=flip_high_ps)
 
     methods_to_run = ['jaccard', 'cosine', 'cosineIDF', 'shared_size', 'hamming', 'pearson', 'weighted_corr',
                       'shared_weight11', 'shared_weight1100', 'adamic_adar', 'newman', 'mixed_pairs']
@@ -132,8 +134,8 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs
     with gzip.open(scored_pairs_file_new, 'r') as fpin:
         scores_data_frame = pd.read_csv(fpin)
 
-    scores_data_frame['label'] = score_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat_preproc),
-                                                                      num_true_pairs=5)
+    scores_data_frame['label'] = expts_labeled_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat_preproc),
+                                                                              num_true_pairs=5)
     end = timer()
     print("ran " \
           + str(len(methods_to_run) + (len(mixed_pairs_sims) - 1 if 'mixed_pairs' in methods_to_run else 0)) \
@@ -145,7 +147,7 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs
     with gzip.open(scored_pairs_file_R, 'r') as fpin:
         scores_data_frame_R = pd.read_csv(fpin)
 
-    for (R_method, our_method) in mapping_from_R_methods.items():
+    for (R_method, our_method) in list(mapping_from_R_methods.items()):
         if our_method in list(scores_data_frame):
             print("Checking " + our_method)
             # R data doesn't have item numbers, but is in the same all-pairs order as ours
@@ -225,13 +227,13 @@ def test_only_wc(adj_mat_infile, scored_pairs_file_R, scored_pairs_file_new):
     # Read adj data and prep pi_vector
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     scores_storage = magic_dictionary.make_me_a_dict(adj_mat_preproc.shape[0])
     scoring_methods.extra_implementations.simple_only_weighted_corr(score_data.gen_all_pairs, adj_mat_preproc,
                                                                     scores_storage.create_and_store_array("weighted_corr"),
                                                                     pi_vector_preproc, print_timing=True)
-    scores_storage.to_csv_gz(scored_pairs_file_new, score_data.gen_all_pairs, adj_mat_preproc)
+    scores_storage.to_csv_gz(scored_pairs_file_new, lambda: score_data.ij_gen(adj_mat_preproc.shape[0]))
     with gzip.open(scored_pairs_file_new, 'r') as fpin:
         wc_frame = pd.read_csv(fpin)
 
@@ -298,7 +300,7 @@ def demo_run_and_eval(adj_mat_infile, pair_scores_outfile, evals_outfile, prefer
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
     score_data.run_and_eval(adj_mat,
-                            true_labels_func=score_data.true_labels_for_expts_with_5pairs,
+                            true_labels_func=expts_labeled_data.true_labels_for_expts_with_5pairs,
                             method_spec="all",
                             evals_outfile=evals_outfile,
                             pair_scores_outfile=pair_scores_outfile,
@@ -322,9 +324,11 @@ def demo_loc_data():
 
 # useful for one-offs
 if __name__ == "__main0__":
-    score_data.score_only('../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_graph.mtx.gz', ['weighted_corr_exp'],
-                          '../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_new_pair_scores.csv.gz', print_timing=True)
-    # demo_loc_data()
+    # score_data.score_only("../../CHASE-expts/example-with-0s/1551500400_graph.mtx.gz", ["jaccard", "pearson", "weighted_corr", "weighted_corr_exp"],
+    #            "../../CHASE-expts/example-with-0s/1551500400_pairs_jcc.csv.gz", print_timing=True)
+    # score_data.score_only('../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_graph.mtx.gz', ['weighted_corr_exp'],
+    #                       '../../CHASE-expts/1_42wc-1-1smerged-plots/1312970400_new_pair_scores.csv.gz', print_timing=True)
+    demo_loc_data()
 
     # The function that does it all, that we'll usually call
     # demo_run_and_eval(adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz",

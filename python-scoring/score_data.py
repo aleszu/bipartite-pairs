@@ -7,13 +7,15 @@ from sklearn.metrics import roc_auc_score
 import sys
 import numpy as np
 import pandas as pd
+from functools import partial
 
 import scoring_methods
-import bipartite_fitting
-import bipartite_likelihood
+from bipartite_fitting import learn_graph_models
 
 # This file: If run from the command line, script simply reads data file, saves pairs with scores.
-# Use run_and_eval() for expts: options for loading and manipulating phi, know true pairs and compute AUCs.
+# General purpose functions: score_data(), get_item_likelihoods, and write_item_likelihoods().
+# Use run_and_eval() for expts: has options for loading and manipulating phi (now removed since unused), you provide true pairs,
+# it computes AUCs.
 
 
 # Iterates through all pairs of matrix rows, in the form (i, j) where i < j
@@ -44,24 +46,15 @@ def gen_all_pairs(my_adj_mat, row_labels=None):
             else:
                 yield (i, j, row_labels[i], row_labels[j], rowi, rowj)
 
+
 # For when we're just looping over indices, don't need to access rows
-# note: this returns a generator function. in contrast, gen_all_pairs is a generator function and returns a generator.
-def ij_gen(max):
-    return((i,j, 0, 0, 0, 0) for i in range(max) for j in range((i+1),max))
-
-
-# Convention for all my expt data: the true pairs are items (1,2), (3,4), etc.
-# These two functions each take a generator function and return a list.
-def get_true_labels_expt_data(pairs_generator, num_true_pairs):
-    labels = []
-    for (row_idx1, row_idx2, _, _, _, _) in pairs_generator:
-        label = True if (row_idx2 < 2 * num_true_pairs and row_idx1 == row_idx2 - 1 and row_idx2 % 2) else False
-        labels.append(label)
-    return labels
-
-
-def true_labels_for_expts_with_5pairs(pairs_generator):
-    return get_true_labels_expt_data(pairs_generator, 5)
+# note: this returns a generator function. in contrast, gen_all_pairs is a generator function and returns a generator object.
+# syntax: "for x in <generator object>:" vs. "for x in <generator function>(<possible args>):"
+def ij_gen(max, row_labels=None):
+    if row_labels is not None:
+        return ((i, j, row_labels[i], row_labels[j], 0, 0) for i in range(max) for j in range((i + 1), max))
+    else:
+        return((i, j, i, j, 0, 0) for i in range(max) for j in range((i+1),max))
 
 
 # Infile must be in "matrix market" format and gzipped
@@ -76,38 +69,61 @@ def load_adj_mat(datafile_mmgz, make_binary = True):
     return adj_mat.tocsc()
 
 
-def load_pi_from_file(pi_vector_infile_gz):
-    pi_saved = []
-    with gzip.open(pi_vector_infile_gz, 'r') as fpin:
-        for line in fpin:
-            pi_saved.append(float(line.strip()))
-    return np.array(pi_saved)  # making type consistent with learn_pi_vector
-
-
 # Returns a numpy.ndarray with 1 axis (.ndim = 1)
 def learn_pi_vector(adj_mat):
     pi_orig = adj_mat.sum(axis=0) / float(adj_mat.shape[0])  # a numpy matrix, a type that always stays 2D unless we call .tolist()[0] or np.asarray()
     return np.asarray(pi_orig).squeeze()
 
 
-# Always: remove exact 0s and 1s from columns of data + pi_vector.
-# Optionally: "flip" high p's -- i.e., swap 1's and 0's in the data so that resulting p's are <= .5.
-# expt1: remove affils with 0 or even 1 person attached
-def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
-    epsilon = .25 / adj_mat.shape[0]  # If learned from the data, p_i would be in increments of 1/nrows
-    if expt1:
-        print("expt1: removing affils with degree 0 *or 1*")
-        affils_to_keep = np.logical_and(pi_vector >= epsilon + float(1)/adj_mat.shape[0],
-                                        pi_vector <= 1 - epsilon - float(1)/adj_mat.shape[0])
+def remove_boundary_nodes(adj_mat, pi_vector = None, flip_high_ps=False, orig_row_labels=None):
+    """
+    Replaces adjust_pi_vector. This version removes both items and affils that are all 0's or all 1's,
+    recursively (until there are no more). Returns updated adj_mat and also the "row labels" (i.e.,
+    original indices) of the items that remain. We can compute the pi_vector anytime from the adj_mat, but keeping
+    it as an optional argument in case it was loaded from a file rather than learned.
+    :param pi_vector:
+    :param adj_mat:
+    :param pi_vector:
+    :param flip_high_ps:
+    :return:
+    """
+    adj_mat_mod = adj_mat
+    if orig_row_labels is None:
+        row_labels = np.arange(adj_mat.shape[0])
     else:
-        affils_to_keep = np.logical_and(pi_vector >= epsilon, pi_vector <= 1 - epsilon)
-    print("Keeping " + ("all " if (affils_to_keep.sum() == adj_mat.shape[0]) else "") \
-          + str(affils_to_keep.sum()) + " affils")
-    which_nonzero = np.nonzero(affils_to_keep)      # returns a tuple (immutable list) holding 1 element: an ndarray of indices
-    pi_vector_mod = pi_vector[which_nonzero]        # since pi_vector is also an ndarray, the slicing is happy to use a tuple
-    adj_mat_mod = adj_mat[:, which_nonzero[0]]      # since adj_mat is a matrix, slicing needs just the ndarray
+        row_labels = orig_row_labels
 
-    cmpts_to_flip = pi_vector_mod > .5
+    if pi_vector is not None:
+        pi_vector_mod = pi_vector
+    else:
+        pi_vector_mod = learn_pi_vector(adj_mat)
+            # or in one line: np.asarray(adj_mat.sum(axis=0)).squeeze() / float(adj_mat.shape[0])
+
+    need_to_check = True
+    while (need_to_check):
+        # Remove affils we don't want
+        affil_degrees = np.asarray(adj_mat_mod.sum(axis=0)).squeeze()
+        affils_to_keep = np.logical_and(affil_degrees > 0, affil_degrees < adj_mat.shape[0])
+        if affils_to_keep.sum() < len(affil_degrees):
+            which_nonzero = np.nonzero(affils_to_keep)      # returns a tuple (immutable list) holding 1 element: an ndarray of indices
+            adj_mat_mod = adj_mat_mod[:, which_nonzero[0]]
+            pi_vector_mod = pi_vector_mod[which_nonzero]        # since pi_vector is also an ndarray, the slicing can take the tuple
+        # Remove items we don't want
+        item_degrees = np.asarray(adj_mat_mod.sum(axis=1)).squeeze()
+        items_to_keep = np.logical_and(item_degrees > 0, item_degrees < adj_mat_mod.shape[1])
+        if items_to_keep.sum() < len(item_degrees):
+            which_nonzero = np.nonzero(items_to_keep)
+            adj_mat_mod = adj_mat_mod[which_nonzero[0], :]
+            row_labels = row_labels[which_nonzero]
+        else:
+            need_to_check = False
+
+    print("Keeping " + ("all " if (items_to_keep.sum() == adj_mat.shape[0]) else "") + str(items_to_keep.sum()) +
+          " items and " + ("all " if (affils_to_keep.sum() == adj_mat.shape[1]) else "") \
+          + str(affils_to_keep.sum()) + " affils")
+
+    affil_degrees = np.asarray(adj_mat_mod.sum(axis=0)).squeeze()
+    cmpts_to_flip = affil_degrees > .5 * adj_mat_mod.shape[0]
     if flip_high_ps:
         print("Flipping " + str(cmpts_to_flip.sum()) + " components that had p_i > .5")
         print("(ok to ignore warning message produced)")
@@ -119,29 +135,18 @@ def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
     else:
         print("fyi: leaving in the " + str(cmpts_to_flip.sum()) + " components with p_i > .5")
 
-    return pi_vector_mod, adj_mat_mod.tocsr()
+    # For speed, make sure to leave row_labels as None if it started that way and num items hasn't changed
+    if orig_row_labels is None and items_to_keep.sum() == adj_mat.shape[0]:
+        row_labels = None
 
-
-# (max_iter_biment moved here to be easier to change. we did hit ~51k iterations for one matrix, dims 969 x 42k)
-def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False, max_iter_biment=5000):
-    graph_models = dict()
-    if bernoulli:
-        if pi_vector is not None:
-            bernoulli = bipartite_likelihood.bernoulliModel(pi_vector)
-        else:
-            bernoulli = bipartite_fitting.learn_bernoulli(adj_mat)
-        graph_models['bernoulli'] = bernoulli
-    if exponential:
-        graph_models['exponential'] = bipartite_fitting.learn_biment(adj_mat, max_iter=max_iter_biment)
-    return graph_models
+    return pi_vector_mod, adj_mat_mod.tocsr(), row_labels
 
 
 def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
-                 pair_scores_outfile=None, pi_vector_infile=None, flip_high_ps=False,
-                 make_dense=True, row_labels=None, print_timing=False, expt1=False, learn_exp_model=False,
+                 pair_scores_outfile=None, flip_high_ps=False,
+                 make_dense=True, row_labels=None, print_timing=False, learn_exp_model=False,
                  prefer_faiss=False):
     """
-
     :param adj_mat:
     :param true_labels_func: identifies the true pairs, given a pairs_generator
     :param method_spec: list of method names OR the string 'all'
@@ -161,13 +166,8 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     # will be by column, so it's returned from load_adj_mat as "csc" (compressed sparse column). Then, converted to
     # "csr" in adjust_pi_vector to make pair generation (row slicing) fast.
 
-    # learn phi (/pi_vector)
-    if pi_vector_infile is not None:
-        pi_vector = load_pi_from_file(pi_vector_infile)
-    else:
-        pi_vector = learn_pi_vector(adj_mat)
-
-    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps, expt1=expt1)
+    pi_vector, adj_mat, row_labels = remove_boundary_nodes(adj_mat, flip_high_ps=flip_high_ps,
+                                                           orig_row_labels=row_labels)
     if make_dense:
         adj_mat = adj_mat.toarray()
 
@@ -182,22 +182,26 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     # scores_subset =
     # Once implemented, make pairs_generator use the pairs in scores_subset.
 
-    if row_labels is None:
-        pairs_generator = gen_all_pairs
-        ij_gen_for_labels = ij_gen(adj_mat.shape[0])
-    else:
-        def my_pairs_gen(adj_mat):
-            return gen_all_pairs(adj_mat, row_labels)
-        pairs_generator = my_pairs_gen
-        ij_gen_for_labels = my_pairs_gen    # true labels generator may need the labels
+    # Pairs generators. We need:
+    # 1. Full version that accesses matrix rows, and cheap/efficient version that just gives row indices.
+    # 2. To be able to call each of them multiple times.
+    # 3. Full version must be able to take different adj_matrix arguments.
+    # 4. But row_labels arg should be wrapped in to both, right here.
+
+    # functools.partial lets us construct generators that are automatically reset w/orig args when called again.
+    pairs_generator = partial(gen_all_pairs, row_labels=row_labels)         # this is a generator function. Call it with an arg to get generator object.
+    pairs_gen_for_labels = partial(ij_gen, adj_mat.shape[0], row_labels)    # this too is a generator function. Call it w/o args to get generator object.
+    # equivalent; less elegant than functools.partial
+    # def my_pairs_gen(adj_mat):
+    #     return gen_all_pairs(adj_mat, row_labels)
+    # pairs_generator = my_pairs_gen      # this is a generator function. Call it with an arg to get generator object.
 
     scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
-                                                    outfile_csv_gz=pair_scores_outfile,
-                                                    pi_vector=pi_vector, num_docs=adj_mat.shape[0],
-                                                    mixed_pairs_sims = 'standard',
-                                                    exp_model=graph_models.get('exponential', None),
-                                                    print_timing=print_timing,
-                                                    prefer_faiss=prefer_faiss)
+                                outfile_csv_gz=pair_scores_outfile, indices_gen=pairs_gen_for_labels,
+                                pi_vector=graph_models['bernoulli'].affil_params,
+                                exp_model=graph_models.get('exponential', None),
+                                num_docs=adj_mat.shape[0], mixed_pairs_sims='standard',
+                                print_timing=print_timing, prefer_faiss=prefer_faiss)
     # if scores_subset is not None:
     #     scores_data_frame = pd.merge(scores_subset, scores_data_frame, on=['item1', 'item2'])
 
@@ -205,7 +209,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
         scores_data_frame = pd.read_csv(fpin)
 
     method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
-    scores_data_frame['label'] = list(map(int, true_labels_func(ij_gen_for_labels)))
+    scores_data_frame['label'] = list(map(int, true_labels_func(pairs_gen_for_labels())))
 
     # round pair scores at 15th decimal place so we don't get spurious diffs in AUCs when replicating
     scores_data_frame = scores_data_frame.round(decimals={method:15 for method in method_names})
@@ -221,7 +225,7 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     for method in method_names:
         evals["auc_" + method] = roc_auc_score(y_true=scores_data_frame['label'], y_score=scores_data_frame[method])
 
-    for model_type, graph_model in graph_models.items():
+    for model_type, graph_model in list(graph_models.items()):
         (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat, print_timing=print_timing)
         evals["loglikelihood_" + model_type] = loglik
         evals["akaike_" + model_type] = aic
@@ -256,58 +260,48 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
     """
 
     adj_mat = load_adj_mat(adj_mat_file)
-    pi_vector = learn_pi_vector(adj_mat)
-    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)
+    _, adj_mat, row_labels = remove_boundary_nodes(adj_mat, flip_high_ps=flip_high_ps, orig_row_labels=row_labels)
     if make_dense:
         adj_mat = adj_mat.toarray()
 
     want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or \
                      ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
-    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
+    graph_models = learn_graph_models(adj_mat, bernoulli=True, exponential=want_exp_model)
 
-    for model_type, graph_model in graph_models.items():
+    for model_type, graph_model in list(graph_models.items()):
         (loglik, aic, item_LLs) = graph_model.likelihoods(adj_mat)
         print("loglikelihood " + model_type + ": " + str(loglik))
         print("akaike " + model_type + ": " + str(aic))
 
-    # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
-    # scores_subset =
-    # Once implemented, make pairs_generator use the pairs in scores_subset.
+    pairs_generator = partial(gen_all_pairs, row_labels=row_labels)    # this is a generator function. Call it with an arg to get generator object.
+    indices_generator = partial(ij_gen, adj_mat.shape[0], row_labels)  # this too is a generator function. Call it w/o args to get generator object.
 
-    if row_labels is None:
-        pairs_generator = gen_all_pairs
-    else:
-        def my_pairs_gen(adj_mat):
-            return gen_all_pairs(adj_mat, row_labels)
-        pairs_generator = my_pairs_gen
-
-    scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
-                                                    outfile_csv_gz=pair_scores_outfile,
-                                                    pi_vector=pi_vector, num_docs=adj_mat.shape[0],
-                                                    mixed_pairs_sims='standard',
-                                                    exp_model=graph_models.get('exponential', None),
-                                                    print_timing=print_timing,
-                                                    prefer_faiss=prefer_faiss, back_compat=integer_ham_ssize)
+    scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec, outfile_csv_gz=pair_scores_outfile,
+                                pi_vector=graph_models['bernoulli'].affil_params,
+                                indices_gen=indices_generator,
+                                exp_model=graph_models.get('exponential', None),
+                                num_docs=adj_mat.shape[0], mixed_pairs_sims='standard',
+                                print_timing=print_timing, prefer_faiss=prefer_faiss, back_compat=integer_ham_ssize)
     print('scored pairs saved to ' + pair_scores_outfile)
 
 
-def get_item_likelihoods(adj_mat_file, exponential_model=True):
+def get_item_likelihoods(adj_mat_file, exponential_model=True, row_labels = None):
     adj_mat = load_adj_mat(adj_mat_file)
-    pi_vector = learn_pi_vector(adj_mat)
-    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat)
+    pi_vector, adj_mat, row_labels = remove_boundary_nodes(adj_mat, orig_row_labels=row_labels)
+
     graph_models = learn_graph_models(adj_mat, bernoulli=(not exponential_model),
                                       pi_vector=pi_vector, exponential=exponential_model)
-    (tot_loglik, aic, item_LLs) = graph_models.values()[0].likelihoods(adj_mat)
-    print("learned " + graph_models.keys()[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
+    (tot_loglik, aic, item_LLs) = list(graph_models.values())[0].likelihoods(adj_mat)
+    print("learned " + list(graph_models.keys())[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
     return item_LLs
 
 
 # Utility function: doesn't look at pairs, simply fits a model to the graph and prints the log likelihoods for each
 # item. Runs both Bernoulli and exponential models.
-def write_item_likelihoods(adj_mat_file, loglik_out_csv, flip_high_ps=False):
+def write_item_likelihoods(adj_mat_file, loglik_out_csv, flip_high_ps=False, row_labels = None):
     adj_mat = load_adj_mat(adj_mat_file)
-    pi_vector = learn_pi_vector(adj_mat)
-    pi_vector, adj_mat = adjust_pi_vector(pi_vector, adj_mat, flip_high_ps)
+    pi_vector, adj_mat, row_labels = remove_boundary_nodes(adj_mat, flip_high_ps=flip_high_ps,
+                                                           orig_row_labels=row_labels)
 
     graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=True)
 

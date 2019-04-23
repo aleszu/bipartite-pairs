@@ -8,91 +8,18 @@ from sklearn.linear_model import LogisticRegression
 from collections import Counter
 
 
-# Defaults to the full model; have to turn off unwanted params explicitly.
-def learn_exponential_model(adj_matrix, use_intercept=True, use_item_params=True, use_affil_params=True,
-                            withLL = False):
-
-    # Create feature matrix and labels for the logistic regression
-    # Iterate through entries of the adj_matrix, which become our instances. (Neither matrix is symmetric.)
-
-    # for sklearn.linear_model.LogisticRegression, input should be sparse CSR
-
-    t1 = time.time()
-    # naive version, very slow
-    # X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
-    # Y_lab = np.zeros(np.product(adj_matrix.shape), dtype=bool)
-    # inst_num = 0
-    # for i in range(adj_matrix.shape[0]):
-    #     for j in range(adj_matrix.shape[1]):
-    #         X_feat[inst_num, i] = use_item_params  # instance inst_num refers to item i
-    #         X_feat[inst_num, adj_matrix.shape[0] + j] = use_affil_params   # instance inst_num refers to affil j
-    #         Y_lab[inst_num] = adj_matrix[i,j]   # edge presence/absence
-    #         inst_num += 1
-
-
-    # Version 2 of matrix construction. indptr tells where the new rows start in the vectors "indices" and "data".
-    # indices stores column indices.
-    Y_lab = adj_matrix.reshape((-1,1)).toarray().squeeze().astype(bool)
-    if use_item_params:
-        indices_items = np.concatenate([np.full(shape=adj_matrix.shape[1], fill_value=x) for x in range(adj_matrix.shape[0])])
-    if use_affil_params:
-        indices_affils = list(range(adj_matrix.shape[0], adj_matrix.shape[0] + adj_matrix.shape[1])) * adj_matrix.shape[0]
-
-    if use_item_params and use_affil_params:
-        # X_feat will have 2 entries per row. Num rows = np.product(adj_matrix.shape).
-        # data and indices will be length 2 * np.product(adj_matrix.shape).
-        # indptr's last entry is their length, but np.arange() needs to be told 1 more than that.
-        indptr = np.arange(start=0, stop=2 * np.product(adj_matrix.shape) + 1, step=2)
-        data = np.full(shape=2 * np.product(adj_matrix.shape), fill_value=True)
-        indices = np.column_stack([indices_items, indices_affils]).reshape(-1)
-        X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
-    elif use_item_params or use_affil_params:
-        # X_feat will have one entry per row
-        indptr = np.arange(start=0, stop=np.product(adj_matrix.shape) + 1, step=1)
-        data = np.full(shape=np.product(adj_matrix.shape), fill_value=True)
-        # which entry?
-        if use_item_params:
-            indices = indices_items
-        elif use_affil_params:
-            indices = indices_affils
-        X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
-    else:
-        X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
-
-    t2 = time.time()
-    print('Feature matrix constructed in {} seconds.'.format(round(t2 - t1), 2))
-    t1 = time.time()
-
-    # C is 1/regularization param. Set it high to effectively turn off regularization.
-    # other param options: max_iter, solver, random_state (seed)
-    log_reg_model = LogisticRegression(fit_intercept=use_intercept, C=1e15, solver='lbfgs').fit(X_feat, Y_lab)
-    t2 = time.time()
-    print('Model learned in {} seconds.'.format(round(t2 - t1), 2) + " (" + str(log_reg_model.n_iter_[0]) + " iterations)")
-
-    # for fun & sanity checking, get its predictions back out
-    if withLL:
-        preds = log_reg_model.predict_log_proba(X_feat)  # P(True) will always be in 2nd col
-        which_nonzero = np.nonzero(Y_lab)
-        which_zero = np.nonzero(np.logical_not(Y_lab))
-        model_ll = np.sum(preds[which_nonzero,1]) + np.sum(preds[which_zero, 0])
-        # print "log likelihood of input data according to sklean model: " + str(model_ll)
-    else:
-        model_ll = None
-
-    model_coeffs = log_reg_model.coef_.squeeze()  # 1 per column of X_feat
-
-    my_exp_model = bipartite_likelihood.exponentialModel(adj_matrix.shape[0], adj_matrix.shape[1])
-
-    if use_intercept:
-        intercept = log_reg_model.intercept_.squeeze()
-        my_exp_model.set_density_param(intercept)
-
-    if use_item_params:
-        my_exp_model.set_item_params(model_coeffs[:adj_matrix.shape[0]])
-    if use_affil_params:
-        my_exp_model.set_affil_params(model_coeffs[adj_matrix.shape[0]:])
-
-    return my_exp_model, model_ll
+# (max_iter_biment moved here to be easier to change. we did hit ~51k iterations for one matrix, dims 969 x 42k)
+def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False, max_iter_biment=5000):
+    graph_models = dict()
+    if bernoulli:
+        if pi_vector is not None:
+            bernoulli = bipartite_likelihood.bernoulliModel(pi_vector)
+        else:
+            bernoulli = learn_bernoulli(adj_mat)
+        graph_models['bernoulli'] = bernoulli
+    if exponential:
+        graph_models['exponential'] = learn_biment(adj_mat, max_iter=max_iter_biment)
+    return graph_models
 
 
 # straight from score_data.py
@@ -102,7 +29,7 @@ def learn_bernoulli(adj_matrix):
 
 
 def learn_biment(adj_matrix, max_iter=5000):
-    # from Albert
+
     item_degrees = np.asarray(adj_matrix.sum(axis=1)).squeeze()
     affil_degrees = np.asarray(adj_matrix.sum(axis=0)).squeeze()
     X, Y, X_bak, Y_bak = BiMent_solver(item_degrees, affil_degrees, tolerance=1e-5, max_iter=max_iter)
@@ -119,6 +46,8 @@ def learn_biment(adj_matrix, max_iter=5000):
     expMod.set_affil_params(np.log(Y))
 
     return expMod
+
+
 
 
 # Single function taken from https://github.com/naviddianati/BiMent, as modified in
@@ -217,3 +146,90 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False):
         Y[i] = pdeg_Y[index_to_use_in_deg_Y]
 
     return X, Y, X_bak, Y_bak
+
+
+# Defaults to the full model; have to turn off unwanted params explicitly.
+def learn_exponential_model(adj_matrix, use_intercept=True, use_item_params=True, use_affil_params=True,
+                            withLL = False):
+
+    # Create feature matrix and labels for the logistic regression
+    # Iterate through entries of the adj_matrix, which become our instances. (Neither matrix is symmetric.)
+
+    # for sklearn.linear_model.LogisticRegression, input should be sparse CSR
+
+    t1 = time.time()
+    # naive version, very slow
+    # X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
+    # Y_lab = np.zeros(np.product(adj_matrix.shape), dtype=bool)
+    # inst_num = 0
+    # for i in range(adj_matrix.shape[0]):
+    #     for j in range(adj_matrix.shape[1]):
+    #         X_feat[inst_num, i] = use_item_params  # instance inst_num refers to item i
+    #         X_feat[inst_num, adj_matrix.shape[0] + j] = use_affil_params   # instance inst_num refers to affil j
+    #         Y_lab[inst_num] = adj_matrix[i,j]   # edge presence/absence
+    #         inst_num += 1
+
+
+    # Version 2 of matrix construction. indptr tells where the new rows start in the vectors "indices" and "data".
+    # indices stores column indices.
+    Y_lab = adj_matrix.reshape((-1,1)).toarray().squeeze().astype(bool)
+    if use_item_params:
+        indices_items = np.concatenate([np.full(shape=adj_matrix.shape[1], fill_value=x) for x in range(adj_matrix.shape[0])])
+    if use_affil_params:
+        indices_affils = list(range(adj_matrix.shape[0], adj_matrix.shape[0] + adj_matrix.shape[1])) * adj_matrix.shape[0]
+
+    if use_item_params and use_affil_params:
+        # X_feat will have 2 entries per row. Num rows = np.product(adj_matrix.shape).
+        # data and indices will be length 2 * np.product(adj_matrix.shape).
+        # indptr's last entry is their length, but np.arange() needs to be told 1 more than that.
+        indptr = np.arange(start=0, stop=2 * np.product(adj_matrix.shape) + 1, step=2)
+        data = np.full(shape=2 * np.product(adj_matrix.shape), fill_value=True)
+        indices = np.column_stack([indices_items, indices_affils]).reshape(-1)
+        X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
+    elif use_item_params or use_affil_params:
+        # X_feat will have one entry per row
+        indptr = np.arange(start=0, stop=np.product(adj_matrix.shape) + 1, step=1)
+        data = np.full(shape=np.product(adj_matrix.shape), fill_value=True)
+        # which entry?
+        if use_item_params:
+            indices = indices_items
+        elif use_affil_params:
+            indices = indices_affils
+        X_feat = sparse.csr_matrix((data, indices, indptr), dtype=bool)
+    else:
+        X_feat = sparse.csr_matrix((np.product(adj_matrix.shape), np.sum(adj_matrix.shape)), dtype=bool)
+
+    t2 = time.time()
+    print('Feature matrix constructed in {} seconds.'.format(round(t2 - t1), 2))
+    t1 = time.time()
+
+    # C is 1/regularization param. Set it high to effectively turn off regularization.
+    # other param options: max_iter, solver, random_state (seed)
+    log_reg_model = LogisticRegression(fit_intercept=use_intercept, C=1e15, solver='lbfgs').fit(X_feat, Y_lab)
+    t2 = time.time()
+    print('Model learned in {} seconds.'.format(round(t2 - t1), 2) + " (" + str(log_reg_model.n_iter_[0]) + " iterations)")
+
+    # for fun & sanity checking, get its predictions back out
+    if withLL:
+        preds = log_reg_model.predict_log_proba(X_feat)  # P(True) will always be in 2nd col
+        which_nonzero = np.nonzero(Y_lab)
+        which_zero = np.nonzero(np.logical_not(Y_lab))
+        model_ll = np.sum(preds[which_nonzero,1]) + np.sum(preds[which_zero, 0])
+        # print "log likelihood of input data according to sklean model: " + str(model_ll)
+    else:
+        model_ll = None
+
+    model_coeffs = log_reg_model.coef_.squeeze()  # 1 per column of X_feat
+
+    my_exp_model = bipartite_likelihood.exponentialModel(adj_matrix.shape[0], adj_matrix.shape[1])
+
+    if use_intercept:
+        intercept = log_reg_model.intercept_.squeeze()
+        my_exp_model.set_density_param(intercept)
+
+    if use_item_params:
+        my_exp_model.set_item_params(model_coeffs[:adj_matrix.shape[0]])
+    if use_affil_params:
+        my_exp_model.set_affil_params(model_coeffs[adj_matrix.shape[0]:])
+
+    return my_exp_model, model_ll

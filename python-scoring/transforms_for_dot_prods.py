@@ -11,6 +11,8 @@ def wc_transform(adj_matrix, pi_vector):
 
 
 # See comments for wc_transform
+# Standardize each entry of the adj_matrix based on its expected value:
+# x_ij --> (x_ij - p_ij) / sqrt(p_ij(1-p_ij))
 def wc_exp_transform(adj_matrix, exp_model):
     edge_probs = exp_model.edge_prob_matrix()
     return (adj_matrix - edge_probs) / np.sqrt(edge_probs * (1 - edge_probs) * adj_matrix.shape[1])

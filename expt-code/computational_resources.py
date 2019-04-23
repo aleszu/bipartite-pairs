@@ -10,6 +10,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
 import numpy as np
 
+import bipartite_fitting
+import expts_labeled_data
 import score_data
 import loc_data
 import scoring_methods_fast
@@ -24,11 +26,12 @@ def resources_test(run_all_implementations=True, use_faiss = False):
     num_nodes = (100, 1000, 10000, 100000)
     # num_nodes = [10000]  # this size: no run finished in the length of time I was willing to wait
     num_nodes = (100, 500, 1000, 5000)
+    # num_nodes = [5000]
     for num_to_try in num_nodes:
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+        pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
         # (order given here doesn't matter)
         methods_to_run = ['cosine', 'cosineIDF',
@@ -47,7 +50,7 @@ def resources_test(run_all_implementations=True, use_faiss = False):
         want_exp_model = ('weighted_corr_exp' in methods_to_run) or \
                          ('weighted_corr_exp_faiss' in methods_to_run) or ('all' in methods_to_run)
         start = timer()
-        graph_models = score_data.learn_graph_models(adj_mat, bernoulli=False, pi_vector=None, exponential=want_exp_model)
+        graph_models = bipartite_fitting.learn_graph_models(adj_mat, bernoulli=False, pi_vector=None, exponential=want_exp_model)
         end = timer()
         print("time for learning exponential model: " + str(end - start) + " seconds" if want_exp_model else "")
 
@@ -92,7 +95,7 @@ def test_cosine_versions():
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+        pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
         print("\nmatrix has " + str(adj_mat_preproc.shape[0]) + " items, " + str(adj_mat_preproc.shape[1]) \
               + " affils ")
         print("process memory: ")

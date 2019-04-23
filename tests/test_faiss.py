@@ -3,6 +3,9 @@ from __future__ import print_function
 
 from builtins import str
 import sys
+
+import expts_labeled_data
+
 sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
 sys.path.append("../expt-code")
 
@@ -19,7 +22,7 @@ def test_faiss_basic_calls():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector, adj_mat = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector, adj_mat = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     # can do dot product on plain adj matrix -- just computes sharedSize
     index = faiss.IndexFlatIP(adj_mat.shape[1])    # takes numCols as arg
@@ -40,7 +43,7 @@ def test_score_wc_faiss():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector, adj_mat = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector, adj_mat = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     scores_data_frame = scoring_with_faiss.score_pairs_faiss(adj_mat, which_methods=['weighted_corr_faiss'], how_many_neighbors=-1, print_timing=True,
                       pi_vector=pi_vector)
@@ -66,7 +69,7 @@ def test_faiss_plus_normal():
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
 
     score_data.run_and_eval(adj_mat,
-                            true_labels_func=score_data.true_labels_for_expts_with_5pairs,
+                            true_labels_func=expts_labeled_data.true_labels_for_expts_with_5pairs,
                             # method_spec="all",
                             method_spec=['weighted_corr', 'weighted_corr_faiss'],
                             evals_outfile="reality_appweek_50/python-out/evals-test.txt",
@@ -90,7 +93,7 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
 
         start = timer()
         score_data.run_and_eval(adj_mat,
-                                true_labels_func=score_data.true_labels_for_expts_with_5pairs,
+                                true_labels_func=expts_labeled_data.true_labels_for_expts_with_5pairs,
                                 method_spec=methods_to_run,
                                 evals_outfile=evals_outfile,
                                 pair_scores_outfile=scored_pairs_outfile,
@@ -102,7 +105,7 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
         normal_versions = [x[:-6] for x in methods_to_run]
         start = timer()
         score_data.run_and_eval(adj_mat,
-                                true_labels_func=score_data.true_labels_for_expts_with_5pairs,
+                                true_labels_func=expts_labeled_data.true_labels_for_expts_with_5pairs,
                                 method_spec=normal_versions,
                                 evals_outfile=evals_outfile,
                                 pair_scores_outfile=scored_pairs_outfile,
@@ -119,7 +122,7 @@ def resources_test():
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+        pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
         # plain WC uses "transform" when dense, "terms" when sparse -- speed varies accordingly
         methods_to_run = ['weighted_corr', 'weighted_corr_faiss']

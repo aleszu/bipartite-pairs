@@ -1,6 +1,9 @@
 from __future__ import print_function
 from builtins import str
 import sys
+
+import expts_labeled_data
+
 sys.path.append("../python-scoring")  # add other dirs to path (for non-PyCharm use)
 sys.path.append("../expt-code")
 
@@ -25,7 +28,7 @@ def test_create_models():
     adj_mat_infile = "reality_appweek_50/data50_adjMat.mtx.gz"
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     bernoulli_class = bipartite_likelihood.bernoulliModel(pi_vector_preproc)
     print("bernoulli model: num_params is " + str(bernoulli_class.get_num_params()))
@@ -81,7 +84,7 @@ def test_learn_special_cases(adj_mat_infile):
     print("\n*** Testing param fitting for the bipartiteGraphModel class ***\n")
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     bernoulli_model = bipartite_fitting.learn_bernoulli(adj_mat_preproc)
     print("bernoulli model: checking pi_vector gets computed correctly")
@@ -112,7 +115,7 @@ def test_learn_with_log_reg(adj_mat_infile):
     print("\n*** Testing param fitting for exponential models using logistic regression ***\n")
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-    pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+    pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
     print("learning exponential model with only density param")
     model_only_dens, sklearn_ll = bipartite_fitting.learn_exponential_model(adj_mat_preproc, use_intercept=True,
@@ -170,7 +173,7 @@ def demo_scoring_with_exp_model():
 
     print("version 1: make adj matrix dense")
     score_data.run_and_eval(adj_mat,
-                            true_labels_func = score_data.true_labels_for_expts_with_5pairs,
+                            true_labels_func =expts_labeled_data.true_labels_for_expts_with_5pairs,
                             method_spec=['weighted_corr', 'weighted_corr_exp'],
                             evals_outfile = "reality_appweek_50/python-out/exp_models-evals.txt",
                             pair_scores_outfile="reality_appweek_50/python-out/exp_models-scoredPairs.csv.gz",
@@ -178,7 +181,7 @@ def demo_scoring_with_exp_model():
 
     print("version 2: keep adj matrix sparse")
     score_data.run_and_eval(adj_mat,
-                            true_labels_func = score_data.true_labels_for_expts_with_5pairs,
+                            true_labels_func =expts_labeled_data.true_labels_for_expts_with_5pairs,
                             method_spec=['weighted_corr', 'weighted_corr_exp'],
                             evals_outfile = "reality_appweek_50/python-out/exp_models-evals-sparse.txt",
                             pair_scores_outfile="reality_appweek_50/python-out/exp_models-scoredPairs-sparse.csv.gz",
@@ -195,7 +198,7 @@ def test_timing_for_fitting_model():
         print("\nnum_nodes = " + str(num_to_try))
         adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
-        pi_vector_preproc, adj_mat_preproc = score_data.adjust_pi_vector(pi_vector_learned, adj_mat)
+        pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 
         start = timer()
         model1 = bipartite_fitting.learn_biment(adj_mat_preproc)

@@ -107,7 +107,12 @@ def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
     else:
         scores_out[:] = ((ss_scores * adj_matrix.shape[1]).round() /
                          (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - (ss_scores * adj_matrix.shape[1]).round()))[:]
-    # todo? check for and fix any Nan/Inf's, which would come where rowsums_mat + rowsums_mat.transpose() == 0
+
+    # fix NaNs, which occur where both rowsums are 0
+    row_0s = np.flatnonzero(rowsums == 0)
+    for i in row_0s:
+        for j in row_0s:
+            scores_out[i,j] = 0
 
     end = timer()
     if print_timing:
