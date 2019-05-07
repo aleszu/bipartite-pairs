@@ -247,7 +247,7 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
 
     :param adj_mat_file: function expects a file in matrix market format, optionally gzipped
     :param method_spec: list of method names (see scoring_methods.all_defined_methods for all choices)
-    :param pair_scores_outfile:
+    :param pair_scores_outfile: output path, should end in .csv.gz. Each line will contain one pair and all their scores.
     :param flip_high_ps:
     :param make_dense: If false, keep matrix in sparse format. Uses less RAM, but far slower.
     :param row_labels: Array of labels, in case 0:(num_rows(adj_mat)-1) isn't their usual naming/numbering
@@ -285,15 +285,29 @@ def score_only(adj_mat_file, method_spec, pair_scores_outfile, flip_high_ps=Fals
     print('scored pairs saved to ' + pair_scores_outfile)
 
 
-def get_item_likelihoods(adj_mat_file, exponential_model=True, row_labels = None):
-    adj_mat = load_adj_mat(adj_mat_file)
+def get_item_likelihoods(adj_mat_file, exponential_model=True, row_labels = None, adj_mat_ready = None):
+    """
+    Reads matrix, learns model of graph, returns vector of log likelihoods for items.
+    :param adj_mat_file: in matrix market format, optionally compressed (*.mtx.gz)
+    :param exponential_model: True for exponential model, False for Bernoulli model
+    :param row_labels: optional vector of strings or numbers (item names)
+    :param adj_mat_ready: Can pass in a sparse adjacency matrix instead of a file path -- see below.
+    :return:
+    """
+    # allows input in the form of a file path OR an unweighted adj_mat
+    if adj_mat_file == "" and adj_mat_ready is not None:
+        adj_mat = adj_mat_ready
+    else:
+        adj_mat = load_adj_mat(adj_mat_file)
+
     pi_vector, adj_mat, row_labels = remove_boundary_nodes(adj_mat, orig_row_labels=row_labels)
 
-    graph_models = learn_graph_models(adj_mat, bernoulli=(not exponential_model),
+    one_graph_model = learn_graph_models(adj_mat, bernoulli=(not exponential_model),
                                       pi_vector=pi_vector, exponential=exponential_model)
-    (tot_loglik, aic, item_LLs) = list(graph_models.values())[0].likelihoods(adj_mat)
-    print("learned " + list(graph_models.keys())[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
-    return item_LLs
+    (tot_loglik, aic, item_LLs) = list(one_graph_model.values())[0].likelihoods(adj_mat)
+    print("learned " + list(one_graph_model.keys())[0] + " model. total loglikelihood " + str(tot_loglik) + ", aic " + str(aic))
+
+    return item_LLs, row_labels
 
 
 # Utility function: doesn't look at pairs, simply fits a model to the graph and prints the log likelihoods for each
@@ -312,8 +326,10 @@ def write_item_likelihoods(adj_mat_file, loglik_out_csv, flip_high_ps=False, row
 
     with open(loglik_out_csv, 'w') as fout:
         fout.write("item,loglik_bernoulli,loglik_exponential\n")
+        if row_labels is None:
+            row_labels = range(adj_mat.shape[0])
         for i, score in enumerate(item_LLs_bern):
-            fout.write(str(i) + ',' + str(item_LLs_bern[i]) + "," + str(item_LLs_exp[i]) + "\n")
+            fout.write(str(row_labels[i]) + ',' + str(item_LLs_bern[i]) + "," + str(item_LLs_exp[i]) + "\n")
 
 
 if __name__ == "__main__":
