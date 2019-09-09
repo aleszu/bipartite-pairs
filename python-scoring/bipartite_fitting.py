@@ -9,7 +9,7 @@ from collections import Counter
 
 
 # (max_iter_biment moved here to be easier to change. we did hit ~51k iterations for one matrix, dims 969 x 42k)
-def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False, max_iter_biment=5000):
+def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=False, max_iter_biment=5000, verbose=False):
     graph_models = dict()
     if bernoulli:
         if pi_vector is not None:
@@ -18,7 +18,7 @@ def learn_graph_models(adj_mat, bernoulli=True, pi_vector=None, exponential=Fals
             bernoulli = learn_bernoulli(adj_mat)
         graph_models['bernoulli'] = bernoulli
     if exponential:
-        graph_models['exponential'] = learn_biment(adj_mat, max_iter=max_iter_biment)
+        graph_models['exponential'] = learn_biment(adj_mat, max_iter=max_iter_biment, verbose=verbose)
     return graph_models
 
 
@@ -28,11 +28,11 @@ def learn_bernoulli(adj_matrix):
     return bipartite_likelihood.bernoulliModel(np.asarray(pi_vector).squeeze())
 
 
-def learn_biment(adj_matrix, max_iter=5000):
+def learn_biment(adj_matrix, max_iter=5000, verbose=False):
 
     item_degrees = np.asarray(adj_matrix.sum(axis=1)).squeeze()
     affil_degrees = np.asarray(adj_matrix.sum(axis=0)).squeeze()
-    X, Y, X_bak, Y_bak = BiMent_solver(item_degrees, affil_degrees, tolerance=1e-5, max_iter=max_iter)
+    X, Y, X_bak, Y_bak = BiMent_solver(item_degrees, affil_degrees, tolerance=1e-5, max_iter=max_iter, verbose=verbose)
     #phi_ia = X[:, None] * Y / (1 + X[:, None] * Y)  # P(edge) matrix
 
     # if X_bak is None and Y_bak is None:
@@ -42,8 +42,9 @@ def learn_biment(adj_matrix, max_iter=5000):
 
     # the model is an exponential with item_param[i] = ln(X[i]) and affil_param[j] = ln(Y[j])
     expMod = bipartite_likelihood.exponentialModel(adj_matrix.shape[0], adj_matrix.shape[1])
-    expMod.set_item_params(np.log(X))
-    expMod.set_affil_params(np.log(Y))
+    with np.errstate(divide='ignore'):  # don't warn for log(0) (= -inf)
+        expMod.set_item_params(np.log(X))
+        expMod.set_affil_params(np.log(Y))
 
     return expMod
 
@@ -53,7 +54,7 @@ def learn_biment(adj_matrix, max_iter=5000):
 # Single function taken from https://github.com/naviddianati/BiMent, as modified in
 # https://github.com/agongt408/ASOUND. Then sped up by noting that every node with the same
 # degree has the exact same param calc, so many of the calcs were redundant.
-def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False):
+def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False, verbose=True):
     '''
     Numerically solve the system of nonlinear equations
     we encounter when solving for the Lagrange multipliers
@@ -115,7 +116,7 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False):
         # L_oo
         change = max(np.max(np.abs(pdeg_X - new_pdeg_x)), np.max(np.abs(pdeg_Y - new_pdeg_y)))
 
-        if counter % 500 == 0:
+        if verbose and counter % 500 == 0:
             print('counter=%d, change=%f' % (counter, change))
 
         pdeg_X[:] = new_pdeg_x
@@ -124,13 +125,15 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False):
             break
 
     t2 = time.time()
-    print('Solver done in {} seconds.'.format(round(t2 - t1), 2))
+    if verbose:
+        print('Solver done in {} seconds.'.format(round(t2 - t1), 2))
 
     if change > tolerance:
         print("Warning: Solver did not converge. Returned first-order solution instead.")
         return X_bak, Y_bak, None, None
 
-    print("Solver converged in {} iterations.".format(counter))
+    if verbose:
+        print("Solver converged in {} iterations.".format(counter))
 
     # convert back from deg_X (short) to X (longer)
     X = np.zeros(len(fs))

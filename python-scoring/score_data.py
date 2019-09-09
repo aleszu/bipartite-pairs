@@ -1,4 +1,8 @@
 from __future__ import print_function
+
+import os
+import tempfile
+
 from builtins import map, str, range
 from scipy.io import mmread
 from scipy import sparse
@@ -28,7 +32,7 @@ def gen_all_pairs(my_adj_mat, row_labels=None):
     is_numpy_matrix = (type(my_adj_mat) == np.matrix)   # this type results from operations using sparse + ndarray
     for i in range(num_rows):
         if is_sparse:
-            rowi = my_adj_mat.getrow(i).toarray()[0]  # toarray() gives 2-d matrix, [0] to flatten
+            rowi = my_adj_mat.getrow(i).toarray()[0]  # toarray() gives 2-d ndarray, [0] to flatten
         else:   # already an ndarray(), possibly a matrix()
             rowi = my_adj_mat[i,]
             if is_numpy_matrix:
@@ -75,12 +79,14 @@ def learn_pi_vector(adj_mat):
     return np.asarray(pi_orig).squeeze()
 
 
-def remove_boundary_nodes(adj_mat, pi_vector = None, flip_high_ps=False, orig_row_labels=None):
+def remove_boundary_nodes(adj_mat, pi_vector = None, flip_high_ps=False, orig_row_labels=None,
+                          remove_boundary_items=True, remove_boundary_affils=True):
     """
     Replaces adjust_pi_vector. This version removes both items and affils that are all 0's or all 1's,
     recursively (until there are no more). Returns updated adj_mat and also the "row labels" (i.e.,
     original indices) of the items that remain. We can compute the pi_vector anytime from the adj_mat, but keeping
-    it as an optional argument in case it was loaded from a file rather than learned.
+    it as an optional argument in case it was loaded from a file rather than learned. (Note: don't load pi_vector
+    from a file when using remove_boundary_items=True; behavior may not be as expected.)
     :param pi_vector:
     :param adj_mat:
     :param pi_vector:
@@ -94,29 +100,40 @@ def remove_boundary_nodes(adj_mat, pi_vector = None, flip_high_ps=False, orig_ro
         row_labels = orig_row_labels
 
     if pi_vector is not None:
-        pi_vector_mod = pi_vector
+        pi_vector_mod = pi_vector.copy()
     else:
         pi_vector_mod = learn_pi_vector(adj_mat)
             # or in one line: np.asarray(adj_mat.sum(axis=0)).squeeze() / float(adj_mat.shape[0])
 
     need_to_check = True
+    # initialize
+    items_to_keep = np.full(adj_mat.shape[0], True)
+    affils_to_keep = np.full(adj_mat.shape[1], True)
     while (need_to_check):
-        # Remove affils we don't want
-        affil_degrees = np.asarray(adj_mat_mod.sum(axis=0)).squeeze()
-        affils_to_keep = np.logical_and(affil_degrees > 0, affil_degrees < adj_mat.shape[0])
-        if affils_to_keep.sum() < len(affil_degrees):
-            which_nonzero = np.nonzero(affils_to_keep)      # returns a tuple (immutable list) holding 1 element: an ndarray of indices
-            adj_mat_mod = adj_mat_mod[:, which_nonzero[0]]
-            pi_vector_mod = pi_vector_mod[which_nonzero]        # since pi_vector is also an ndarray, the slicing can take the tuple
-        # Remove items we don't want
-        item_degrees = np.asarray(adj_mat_mod.sum(axis=1)).squeeze()
-        items_to_keep = np.logical_and(item_degrees > 0, item_degrees < adj_mat_mod.shape[1])
-        if items_to_keep.sum() < len(item_degrees):
-            which_nonzero = np.nonzero(items_to_keep)
-            adj_mat_mod = adj_mat_mod[which_nonzero[0], :]
-            row_labels = row_labels[which_nonzero]
-        else:
-            need_to_check = False
+        need_to_check = False   # only one condition turns it back on
+
+        if remove_boundary_affils:
+            # Remove affils we don't want
+            affil_degrees = np.asarray(adj_mat_mod.sum(axis=0)).squeeze()
+            affils_to_keep = np.logical_and(affil_degrees > 0, affil_degrees < adj_mat_mod.shape[0])
+            if affils_to_keep.sum() < len(affil_degrees):
+                which_nonzero = np.nonzero(affils_to_keep)      # returns a tuple (immutable list) holding 1 element: an ndarray of indices
+                adj_mat_mod = adj_mat_mod[:, which_nonzero[0]]
+                pi_vector_mod = pi_vector_mod[which_nonzero]        # since pi_vector is also an ndarray, the slicing can take the tuple
+
+        if remove_boundary_items:
+            # Remove items we don't want
+            item_degrees = np.asarray(adj_mat_mod.sum(axis=1)).squeeze()
+            items_to_keep = np.logical_and(item_degrees > 0, item_degrees < adj_mat_mod.shape[1])
+            if items_to_keep.sum() < len(item_degrees):
+                which_nonzero = np.nonzero(items_to_keep)
+                adj_mat_mod = adj_mat_mod[which_nonzero[0], :]
+                row_labels = row_labels[which_nonzero]
+                # update pi_vector, provided we're using one fit to this data
+                if pi_vector is None:
+                    pi_vector_mod = learn_pi_vector(adj_mat_mod)
+                if remove_boundary_affils:
+                    need_to_check = True
 
     print("Keeping " + ("all " if (items_to_keep.sum() == adj_mat.shape[0]) else "") + str(items_to_keep.sum()) +
           " items and " + ("all " if (affils_to_keep.sum() == adj_mat.shape[1]) else "") \
@@ -145,7 +162,8 @@ def remove_boundary_nodes(adj_mat, pi_vector = None, flip_high_ps=False, orig_ro
 def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
                  pair_scores_outfile=None, flip_high_ps=False,
                  make_dense=True, row_labels=None, print_timing=False, learn_exp_model=False,
-                 prefer_faiss=False):
+                 prefer_faiss=False, mixed_pairs_sims='standard', pi_vector_to_use=None,
+                 remove_boundary_items=True, remove_boundary_affils=True):
     """
     :param adj_mat:
     :param true_labels_func: identifies the true pairs, given a pairs_generator
@@ -166,8 +184,10 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     # will be by column, so it's returned from load_adj_mat as "csc" (compressed sparse column). Then, converted to
     # "csr" in adjust_pi_vector to make pair generation (row slicing) fast.
 
-    pi_vector, adj_mat, row_labels = remove_boundary_nodes(adj_mat, flip_high_ps=flip_high_ps,
-                                                           orig_row_labels=row_labels)
+    pi_vector, adj_mat, row_labels = remove_boundary_nodes(adj_mat, pi_vector=pi_vector_to_use,
+                                                           flip_high_ps=flip_high_ps, orig_row_labels=row_labels,
+                                                           remove_boundary_items=remove_boundary_items,
+                                                           remove_boundary_affils=remove_boundary_affils)
     if make_dense:
         adj_mat = adj_mat.toarray()
 
@@ -176,7 +196,8 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
 
     want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or\
                      ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
-    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model)
+    graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model,
+                                       verbose = print_timing)
 
     # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
     # scores_subset =
@@ -196,16 +217,24 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     #     return gen_all_pairs(adj_mat, row_labels)
     # pairs_generator = my_pairs_gen      # this is a generator function. Call it with an arg to get generator object.
 
+    # outfile: even if caller didn't ask for one, we need a temporary one
+    if pair_scores_outfile is None:
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".csv.gz")
+        initial_pairs_outfile = tf.name
+        tf.close()
+    else:
+        initial_pairs_outfile = pair_scores_outfile
+
     scoring_methods.score_pairs(pairs_generator, adj_mat, method_spec,
-                                outfile_csv_gz=pair_scores_outfile, indices_gen=pairs_gen_for_labels,
+                                outfile_csv_gz=initial_pairs_outfile, indices_gen=pairs_gen_for_labels,
                                 pi_vector=graph_models['bernoulli'].affil_params,
                                 exp_model=graph_models.get('exponential', None),
-                                num_docs=adj_mat.shape[0], mixed_pairs_sims='standard',
+                                num_docs=adj_mat.shape[0], mixed_pairs_sims=mixed_pairs_sims,
                                 print_timing=print_timing, prefer_faiss=prefer_faiss)
     # if scores_subset is not None:
     #     scores_data_frame = pd.merge(scores_subset, scores_data_frame, on=['item1', 'item2'])
 
-    with gzip.open(pair_scores_outfile, 'r') as fpin:
+    with gzip.open(initial_pairs_outfile, 'r') as fpin:
         scores_data_frame = pd.read_csv(fpin)
 
     method_names = set(scores_data_frame.columns.tolist()) - {'item1', 'item2'}
@@ -219,6 +248,8 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
         scores_data_frame = scores_data_frame.reindex(columns=['item1', 'item2', 'label'] +
                                                               sorted(list(method_names - {'label'})), copy=False)
         scores_data_frame.to_csv(pair_scores_outfile, index=False, compression="gzip")
+    else:
+        os.remove(initial_pairs_outfile)
 
     # compute evals and save
     evals = {}
