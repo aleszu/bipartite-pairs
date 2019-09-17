@@ -5,7 +5,7 @@ import numpy as np
 
 # Convention for all my expt data: the true pairs are items (1,2), (3,4), etc.
 # These two functions each take a generator object and return a list.
-def get_true_labels_expt_data(pairs_generator, num_true_pairs):
+def get_true_labels_expt_data(num_true_pairs, pairs_generator):
     labels = []
     for (row_idx1, row_idx2, _, _, _, _) in pairs_generator:
         label = True if (row_idx2 < 2 * num_true_pairs and row_idx1 == row_idx2 - 1 and row_idx2 % 2) else False
@@ -14,7 +14,7 @@ def get_true_labels_expt_data(pairs_generator, num_true_pairs):
 
 
 def true_labels_for_expts_with_5pairs(pairs_generator):
-    return get_true_labels_expt_data(pairs_generator, 5)
+    return get_true_labels_expt_data(5, pairs_generator)
 
 
 def load_pi_from_file(pi_vector_infile_gz):
@@ -29,7 +29,7 @@ def load_pi_from_file(pi_vector_infile_gz):
 # Always: remove exact 0s and 1s from columns of data + pi_vector.
 # Optionally: "flip" high p's -- i.e., swap 1's and 0's in the data so that resulting p's are <= .5.
 # expt1: remove affils with 0 or even 1 person attached
-def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
+def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False, report_boundary_items=True):
     epsilon = .25 / adj_mat.shape[0]  # If learned from the data, p_i would be in increments of 1/nrows
     if expt1:
         print("expt1: removing affils with degree 0 *or 1*")
@@ -54,5 +54,12 @@ def adjust_pi_vector(pi_vector, adj_mat, flip_high_ps=False, expt1 = False):
 
     else:
         print("fyi: leaving in the " + str(cmpts_to_flip.sum()) + " components with p_i > .5")
+
+    if report_boundary_items:
+        rowsums = np.asarray(adj_mat_mod.sum(axis=1)).squeeze()
+        num_all0 = np.sum(rowsums==0)
+        num_all1 = np.sum(rowsums==adj_mat_mod.shape[1])
+        if num_all0 > 0 or num_all1 > 0:
+            print("(Keeping the: " + str(num_all0) + " all-0 items and " + str(num_all1) + " all-1 items)")
 
     return pi_vector_mod, adj_mat_mod.tocsr()

@@ -18,8 +18,8 @@ from bipartite_fitting import learn_graph_models
 
 # This file: If run from the command line, script simply reads data file, saves pairs with scores.
 # General purpose functions: score_data(), get_item_likelihoods, and write_item_likelihoods().
-# Use run_and_eval() for expts: has options for loading and manipulating phi (now removed since unused), you provide true pairs,
-# it computes AUCs.
+# For expts with labeled data, use run_and_eval(): you provide true pairs, it computes AUCs, and it has options for
+# loading and manipulating phi.
 
 
 # Iterates through all pairs of matrix rows, in the form (i, j) where i < j
@@ -160,23 +160,26 @@ def remove_boundary_nodes(adj_mat, pi_vector = None, flip_high_ps=False, orig_ro
 
 
 def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
-                 pair_scores_outfile=None, flip_high_ps=False,
-                 make_dense=True, row_labels=None, print_timing=False, learn_exp_model=False,
-                 prefer_faiss=False, mixed_pairs_sims='standard', pi_vector_to_use=None,
-                 remove_boundary_items=True, remove_boundary_affils=True):
+                 pair_scores_outfile=None, mixed_pairs_sims='standard', add_exp_model=False,
+                 make_dense=True, prefer_faiss=False, print_timing=False,
+                 row_labels=None, pi_vector_to_use=None,
+                 flip_high_ps=False, remove_boundary_items=True, remove_boundary_affils=True):
     """
     :param adj_mat:
     :param true_labels_func: identifies the true pairs, given a pairs_generator
     :param method_spec: list of method names OR the string 'all'
     :param evals_outfile:
     :param pair_scores_outfile:
-    :param pi_vector_infile:
-    :param flip_high_ps:
+    :param mixed_pairs_sims:
+    :param add_exp_model:
     :param make_dense:
-    :param row_labels: used when adj_mat's indices differ from original row numbers
+    :param prefer_faiss:
     :param print_timing:
-    :param expt1:
-    :param learn_exp_model:
+    :param row_labels: used when adj_mat's indices differ from original row numbers
+    :param pi_vector_to_use:
+    :param flip_high_ps:
+    :param remove_boundary_affils:
+    :param remove_boundary_items:
     :return:
     """
 
@@ -194,25 +197,25 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     # score pairs
     # (sending in all special args any methods might need)
 
-    want_exp_model = learn_exp_model or ('weighted_corr_exp' in method_spec) or\
+    want_exp_model = add_exp_model or ('weighted_corr_exp' in method_spec) or \
                      ('weighted_corr_exp_faiss' in method_spec) or ('all' in method_spec)
     graph_models = learn_graph_models(adj_mat, bernoulli=True, pi_vector=pi_vector, exponential=want_exp_model,
-                                       verbose = print_timing)
+                                       verbose = print_timing, max_iter_biment=50000)
 
-    # First, run any methods that return a subset of pairs (right now, none -- expect to need this when scaling up).
+    # In the future (anticipated for scaling up): first, run any methods that return a subset of pairs.
     # scores_subset =
-    # Once implemented, make pairs_generator use the pairs in scores_subset.
+    # Then make pairs_generator use the pairs in scores_subset.
 
     # Pairs generators. We need:
     # 1. Full version that accesses matrix rows, and cheap/efficient version that just gives row indices.
-    # 2. To be able to call each of them multiple times.
-    # 3. Full version must be able to take different adj_matrix arguments.
-    # 4. But row_labels arg should be wrapped in to both, right here.
+    # 2. To be able to call each of them multiple times (once per method).
+    # 3. Full version must be able to take different adj_matrix arguments (transformed matrices).
+    # 4. But row_labels arg should be wrapped into both, right here.
 
     # functools.partial lets us construct generators that are automatically reset w/orig args when called again.
     pairs_generator = partial(gen_all_pairs, row_labels=row_labels)         # this is a generator function. Call it with an arg to get generator object.
     pairs_gen_for_labels = partial(ij_gen, adj_mat.shape[0], row_labels)    # this too is a generator function. Call it w/o args to get generator object.
-    # equivalent; less elegant than functools.partial
+    # equivalent, but less elegant than functools.partial
     # def my_pairs_gen(adj_mat):
     #     return gen_all_pairs(adj_mat, row_labels)
     # pairs_generator = my_pairs_gen      # this is a generator function. Call it with an arg to get generator object.

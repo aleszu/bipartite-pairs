@@ -8,12 +8,13 @@ from sklearn.preprocessing import scale
 import transforms_for_dot_prods
 import scoring_methods
 
+
 # Leaves matrix sparse if it starts sparse.
-# Note that the package's call computes scores among all pairs of rows -- may not always be what we want.
-# sklearn's cosine_similarity is really fast (uses C). For sparse matrices, it's super memory efficient, but for dense
+# sklearn (use_package=True) is really fast (uses C), far better than my implementation, as data scales.
+# For sparse matrices, sklearn's cosine_similarity is super memory efficient, but for dense
 # matrices, it's super memory inefficient. use_batches allows a better tradeoff for dense matrices.
-# sklearn (use_package=True) is far better than my implementation, as data scales.
-def simple_only_cosine(pairs_generator, adj_matrix, scores_out, weights=None, print_timing=False, use_package=False, use_batches=False):
+def simple_only_cosine(pairs_generator, adj_matrix, scores_out, weights=None, print_timing=False, use_package=False,
+                       use_batches=False):
     start = timer()
     if weights is not None:
         if sparse.isspmatrix(adj_matrix):
@@ -41,6 +42,7 @@ def simple_only_cosine(pairs_generator, adj_matrix, scores_out, weights=None, pr
     if print_timing:
         print('simple_only_cosine: ' + str(end - start) + " secs")
 
+
 # taken from https://stackoverflow.com/a/45202988/1014857
 def cosine_similarity_n_space(m1, m2, ret, batch_size=500, verbose=False):
     assert m1.shape[1] == m2.shape[1]
@@ -59,7 +61,7 @@ def cosine_similarity_n_space(m1, m2, ret, batch_size=500, verbose=False):
         sim = cosine_similarity(rows, m2) # rows is O(1) size
         ret[start: end] = sim
         cnt += 1
-    # return ret
+
 
 # Leaves sparse matrix sparse
 def simple_only_pearson(pairs_generator, adj_matrix, scores_out, print_timing=False):
@@ -84,7 +86,6 @@ def simple_only_pearson(pairs_generator, adj_matrix, scores_out, print_timing=Fa
         print('simple_only_pearson: ' + str(end - start) + " secs")
 
 
-
 # jaccard = shared_size(i,j) / (rowi.sum() + rowj.sum() - shared_size(i,j))
 def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_out, print_timing = False, back_compat = False):
     start = timer()
@@ -99,14 +100,13 @@ def jaccard_from_sharedsize(pairs_generator, adj_matrix, scores_storage, scores_
                                       print_timing=print_timing, back_compat=back_compat)
 
     rowsums = np.asarray(adj_matrix.sum(axis=1)).squeeze()
-    # create a square matrix with rowsums along each row
-    # rowsums_mat = rowsums[:, np.newaxis] + np.zeros(adj_matrix.shape[0])
 
-    if back_compat:
-        scores_out[:] = (ss_scores.astype('float') / (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - ss_scores))[:]
-    else:
-        scores_out[:] = ((ss_scores * adj_matrix.shape[1]).round() /
-                         (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - (ss_scores * adj_matrix.shape[1]).round()))[:]
+    with np.errstate(invalid='ignore'):  # ignore any NaN warnings; fixing them below
+        if back_compat:
+            scores_out[:] = (ss_scores.astype('float') / (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - ss_scores))[:]
+        else:
+            scores_out[:] = ((ss_scores * adj_matrix.shape[1]).round() /
+                             (rowsums[:, np.newaxis] + rowsums[np.newaxis, :] - (ss_scores * adj_matrix.shape[1]).round()))[:]
 
     # fix NaNs, which occur where both rowsums are 0
     row_0s = np.flatnonzero(rowsums == 0)

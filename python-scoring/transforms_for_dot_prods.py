@@ -7,7 +7,13 @@ from sklearn.preprocessing import scale
 # Also multiply denominator by sqrt(num_cols), so that the final dot product returns the mean, not just a sum.
 # Necessarily makes a dense matrix.
 def wc_transform(adj_matrix, pi_vector):
-    return (adj_matrix - pi_vector) / np.sqrt(pi_vector * (1 - pi_vector) * adj_matrix.shape[1])
+    # if p_ij = 0 or 1, the entry is constant, and we want to return 0 in that entry (0 deviation from its mean).
+    # following sklearn's _handle_zeros_in_scale, handle this case by making its denominator finite (numerator
+    # will provide the 0).
+    pi_for_denom = pi_vector.copy()
+    pi_for_denom[pi_for_denom == 0] = .5
+    pi_for_denom[pi_for_denom == 1] = .5
+    return (adj_matrix - pi_vector) / np.sqrt(pi_for_denom * (1 - pi_for_denom) * adj_matrix.shape[1])
 
 
 # See comments for wc_transform
@@ -15,7 +21,11 @@ def wc_transform(adj_matrix, pi_vector):
 # x_ij --> (x_ij - p_ij) / sqrt(p_ij(1-p_ij))
 def wc_exp_transform(adj_matrix, exp_model):
     edge_probs = exp_model.edge_prob_matrix()
-    return (adj_matrix - edge_probs) / np.sqrt(edge_probs * (1 - edge_probs) * adj_matrix.shape[1])
+    # handle p_ij = 0 or 1 like in wc_transform.
+    edge_probs_for_denom = edge_probs.copy()
+    edge_probs_for_denom[edge_probs_for_denom == 0] = .5
+    edge_probs_for_denom[edge_probs_for_denom == 1] = .5
+    return (adj_matrix - edge_probs) / np.sqrt(edge_probs_for_denom * (1 - edge_probs_for_denom) * adj_matrix.shape[1])
 
 
 # Leaves matrix sparse if it starts sparse
@@ -87,7 +97,6 @@ def cosine_weights_transform(adj_matrix, weights, make_dense=False):
         transformed_mat = adj_matrix * weights
 
     return cosine_transform(transformed_mat, make_dense)
-
 
 
 # Resulting matrix has to be dense

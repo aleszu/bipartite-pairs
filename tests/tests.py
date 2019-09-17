@@ -134,8 +134,9 @@ def test_pair_scores_against_R(adj_mat_infile, scored_pairs_file_R, scored_pairs
     with gzip.open(scored_pairs_file_new, 'r') as fpin:
         scores_data_frame = pd.read_csv(fpin)
 
-    scores_data_frame['label'] = expts_labeled_data.get_true_labels_expt_data(score_data.gen_all_pairs(adj_mat_preproc),
-                                                                              num_true_pairs=5)
+    scores_data_frame['label'] = expts_labeled_data.get_true_labels_expt_data(num_true_pairs=5,
+                                                                              pairs_generator=score_data.gen_all_pairs(
+                                                                                  adj_mat_preproc))
     end = timer()
     print("ran " \
           + str(len(methods_to_run) + (len(mixed_pairs_sims) - 1 if 'mixed_pairs' in methods_to_run else 0)) \

@@ -1,0 +1,9 @@
+akaike_bernoulli	1921.4436966087833
+akaike_exponential	1457.3770977745917
+auc_weighted_corr	0.574340949033392
+auc_weighted_corr_exp	0.5308260105448155
+constructAllPairsFromMDocs	76
+loglikelihood_bernoulli	-918.7218483043916
+loglikelihood_exponential	-610.6885488872958
+numAffils	42
+numPositives	5

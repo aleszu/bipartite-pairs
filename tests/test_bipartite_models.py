@@ -18,10 +18,10 @@ from timeit import default_timer as timer
 
 def test_create_models():
     """
-    Tries out constructing bipartiteGraphModel objects (with pre-specified params), checks that loglikelihood & akaike
+    Tries out constructing BipartiteGraphModel objects (with pre-specified params), checks that loglikelihood & akaike
      methods match my calculations (here).
     """
-    print("\n*** Testing the bipartiteGraphModel class ***\n")
+    print("\n*** Testing the BipartiteGraphModel class ***\n")
     # Using data we've already played with: take its pi_vector, put it into a bernoulliModel,
     # and use model to score the adj_matrix
 
@@ -62,7 +62,7 @@ def test_create_models():
 
 
     # can also test the exponential one in a trivial way by giving each edge equal density -- i.e., have it be Erdos-Renyi
-    er_model = bipartite_likelihood.exponentialModel(adj_mat_preproc.shape[0], adj_mat_preproc.shape[1])
+    er_model = bipartite_likelihood.ExponentialModel(adj_mat_preproc.shape[0], adj_mat_preproc.shape[1])
     er_model.set_density_param(-2)  # for all edges, p(edge) = e^-2 / 1 + e^-2, or approx 0.1192
     assert(er_model.get_num_params() == 1)
     print("ER model: num_params is 1")
@@ -81,7 +81,7 @@ def test_learn_special_cases(adj_mat_infile):
     Tests that Bernoulli model learns the right params and that Exponential model can be fit using learn_biment().
 
     """
-    print("\n*** Testing param fitting for the bipartiteGraphModel class ***\n")
+    print("\n*** Testing param fitting for the BipartiteGraphModel class ***\n")
     adj_mat = score_data.load_adj_mat(adj_mat_infile)
     pi_vector_learned = score_data.learn_pi_vector(adj_mat)
     pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
