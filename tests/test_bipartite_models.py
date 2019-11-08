@@ -196,7 +196,7 @@ def test_timing_for_fitting_model():
     num_nodes = (100, 200, 300, 400, 500)
     for num_to_try in num_nodes:
         print("\nnum_nodes = " + str(num_to_try))
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        adj_mat, _, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
         pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
 

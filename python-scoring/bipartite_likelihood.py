@@ -138,6 +138,7 @@ class bernoulliModel(BipartiteGraphModel):
 
 
 class ExponentialModel(BipartiteGraphModel):
+    exp_model_converged = False
     # likelihood of edge (i,j):
     # log(p_ij / (1 - p_ij)) = density_param + item_params_i + affil_params_j
     #

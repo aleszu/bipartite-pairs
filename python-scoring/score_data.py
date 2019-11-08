@@ -267,6 +267,8 @@ def run_and_eval(adj_mat, true_labels_func, method_spec, evals_outfile,
     evals['constructAllPairsFromMDocs'] = adj_mat.shape[0]      # only correct when we're using all pairs
     evals['numPositives'] = scores_data_frame['label'].sum()
     evals['numAffils'] = adj_mat.shape[1]
+    if want_exp_model:
+        evals['expModelConverged'] = int(graph_models['exponential'].exp_model_converged)
 
     with open(evals_outfile, 'w') as fpout:
         print("Saving results to " + evals_outfile)

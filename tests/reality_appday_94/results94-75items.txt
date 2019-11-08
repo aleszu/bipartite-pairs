@@ -3,6 +3,7 @@ akaike_exponential	1455.3770977745703
 auc_weighted_corr	0.5628158844765343
 auc_weighted_corr_exp	0.5343682310469314
 constructAllPairsFromMDocs	75
+expModelConverged       1
 loglikelihood_bernoulli	-803.2208387895647
 loglikelihood_exponential	-610.6885488872852
 numAffils	42

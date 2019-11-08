@@ -84,7 +84,7 @@ def compare_timings_faiss_normal(adj_mat_infile, evals_outfile, scored_pairs_out
     num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
     # num_nodes = [2000]
     for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        adj_mat, _, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         print("\n*** Running all faiss methods ***\n")
         print("(asked for " + str(num_to_try) + " nodes)")
@@ -119,7 +119,7 @@ def resources_test():
 
     num_nodes = (100, 1000, 5000)  # my OS kills it at 10000 (due to memory)
     for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        adj_mat, _, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
         pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)

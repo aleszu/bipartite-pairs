@@ -28,7 +28,7 @@ def resources_test(run_all_implementations=True, use_faiss = False):
     num_nodes = (100, 500, 1000, 5000)
     # num_nodes = [5000]
     for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        adj_mat, _, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
         pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)
@@ -92,7 +92,7 @@ def test_cosine_versions():
     num_nodes = (100, 500, 1000, 5000)
     num_nodes = [1000, 2000]
     for num_to_try in num_nodes:
-        adj_mat, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
+        adj_mat, _, _ = loc_data.read_loc_adj_mat(infile, max_rows=num_to_try)
 
         pi_vector_learned = score_data.learn_pi_vector(adj_mat)
         pi_vector_preproc, adj_mat_preproc = expts_labeled_data.adjust_pi_vector(pi_vector_learned, adj_mat)

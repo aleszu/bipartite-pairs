@@ -40,6 +40,8 @@ def learn_biment(adj_matrix, max_iter=5000, verbose=False):
     with np.errstate(divide='ignore'):  # don't warn for log(0) (= -inf)
         expMod.set_item_params(np.log(X))
         expMod.set_affil_params(np.log(Y))
+    if X_bak is not None:
+        expMod.exp_model_converged = True
 
     return expMod
 
@@ -130,7 +132,7 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False, ver
     index = 0
     for (deg, cnt) in sorted(freqs_gs.items()):
         pdeg_Y[index] = deg / np.sqrt(N)
-        if deg == len(fs):         
+        if deg == len(fs):
             pdeg_Y[index] = np.inf
 
         counts_deg_Y[index] = cnt
@@ -185,7 +187,7 @@ def BiMent_solver(fs, gs, tolerance=1e-10, max_iter=1000, first_order=False, ver
         print('Solver done in {} seconds.'.format(round(t2 - t1), 2))
 
     if change > tolerance:
-        print("Warning: Solver did not converge. Returned first-order solution instead.")
+        print("Warning: Solver did not converge after {} iterations. Returned first-order solution instead.".format(counter))
         return X_bak, Y_bak, None, None
 
     if verbose:
